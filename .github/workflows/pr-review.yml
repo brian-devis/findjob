@@ -15,9 +15,10 @@ concurrency:
 
 jobs:
   review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: brian-devis/pr-reviewer-action@v0
+      - uses: brian-devis/pr-reviewer-action@v0.6.0
         with:
           api_key: ${{ secrets.LLM_API_KEY }}
           api_base_url: ${{ vars.LLM_API_BASE_URL }}
@@ -25,3 +26,18 @@ jobs:
           model: ${{ vars.LLM_MODEL }}
           fail_on: error
           status_context: ai-review
+
+  sandbox:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: brian-devis/pr-reviewer-action@v0.6.0
+        with:
+          enable_ai_review: "false"
+          enable_sandbox: "true"
+          sandbox_language: auto
+          sandbox_status_context: sandbox-tests
