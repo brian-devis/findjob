@@ -15,9 +15,10 @@ concurrency:
 
 jobs:
   review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: brian-devis/pr-reviewer-action@v0
+      - uses: brian-devis/pr-reviewer-action@v0.6.0
         with:
           api_key: ${{ secrets.LLM_API_KEY }}
           api_base_url: ${{ vars.LLM_API_BASE_URL }}
