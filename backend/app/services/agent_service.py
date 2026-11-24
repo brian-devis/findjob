@@ -39,6 +39,8 @@ class AgentService:
 
     async def rotate_secret(self, agent_id: str) -> tuple[Agent, str]:
         agent = await self.get(agent_id)
+        if agent.status == AgentStatus.REVOKED.value:
+            raise ConflictError("已吊销的 Agent 不能轮换凭据")
         secret = generate_agent_secret()
         agent.secret_hash = hash_password(secret)
         agent.secret_version += 1

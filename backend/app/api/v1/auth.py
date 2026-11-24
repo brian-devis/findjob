@@ -56,7 +56,19 @@ async def refresh(request: Request, response: Response, session: DBSession) -> d
     token = request.cookies.get(COOKIE_REFRESH)
     service = AuthService(session)
     admin, access = await service.refresh_access(token or "")
-    csrf = request.cookies.get(COOKIE_CSRF) or service.generate_csrf_token()
+    existing_csrf = request.cookies.get(COOKIE_CSRF)
+    if existing_csrf:
+        csrf = existing_csrf
+    else:
+        csrf = service.generate_csrf_token()
+        response.set_cookie(
+            COOKIE_CSRF,
+            csrf,
+            max_age=settings.refresh_token_expire_days * 86400,
+            httponly=False,
+            secure=settings.cookie_secure,
+            samesite=settings.cookie_samesite,
+        )
     response.set_cookie(
         COOKIE_ACCESS,
         access,

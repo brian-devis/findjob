@@ -28,7 +28,7 @@ _TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
         TaskStatus.QUEUED,
         TaskStatus.CANCELLED,
     },
-    TaskStatus.FAILED: {TaskStatus.QUEUED},  # 允许显式重试
+    TaskStatus.FAILED: set(),  # 终态，不可再流转
     TaskStatus.SUCCEEDED: set(),
     TaskStatus.CANCELLED: set(),
 }

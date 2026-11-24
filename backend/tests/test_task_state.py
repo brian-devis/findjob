@@ -80,3 +80,17 @@ async def test_complete_success_clears_error(session):
     await service.complete(task, succeeded=True)
     assert task.error is None
     assert task.finished_at is not None
+
+
+async def test_failed_is_terminal(session):
+    service = TaskService(session)
+    task = await _create(service, max_attempts=1)
+    await service.dispatch(task, lease_seconds=30)
+    await service.ack(task)
+    await service.complete(task, succeeded=False, error="boom")
+    assert task.status == "failed"
+    assert service.is_terminal(task) is True
+
+    # FAILED 为终态，不允许再流转（含 FAILED -> QUEUED）
+    with pytest.raises(InvalidStateError):
+        await service.requeue_expired(task)

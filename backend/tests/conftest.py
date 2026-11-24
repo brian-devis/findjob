@@ -1,5 +1,9 @@
 """pytest fixtures。"""
+import os
 from collections.abc import AsyncIterator
+
+# 必须在导入 app 之前设置，否则 Settings 校验会因缺少 JWT_SECRET 而失败
+os.environ.setdefault("JWT_SECRET", "aijob-test-secret-0123456789abcdef0123456789abcdef")
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

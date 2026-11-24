@@ -57,3 +57,20 @@ async def test_delete(auth):
 
     resp = await c.get(f"/api/agents/{agent_id}")
     assert resp.status_code == 404
+
+
+async def test_rotate_revoked_agent_conflict(auth):
+    c = auth["client"]
+    csrf = auth["csrf"]
+    data = await _register(c, csrf)
+    agent_id = data["agent_id"]
+
+    resp = await c.post(
+        f"/api/agents/{agent_id}/revoke", headers={"X-CSRF-Token": csrf}
+    )
+    assert resp.status_code == 200
+
+    resp = await c.post(
+        f"/api/agents/{agent_id}/rotate-secret", headers={"X-CSRF-Token": csrf}
+    )
+    assert resp.status_code == 409

@@ -1,4 +1,5 @@
 """认证测试。"""
+import pytest
 from httpx import AsyncClient
 
 
@@ -50,3 +51,42 @@ async def test_logout_invalidates(client: AsyncClient, auth):
     # 注销后 refresh 已吊销，访问 access 也因 token_version 变化而失效
     resp = await c.get("/api/agents")
     assert resp.status_code == 401
+
+
+async def test_refresh_regenerates_csrf_cookie(auth):
+    c: AsyncClient = auth["client"]
+
+    # 删除 csrf cookie，模拟刷新时 cookie 缺失
+    c.cookies.delete("csrf_token")
+
+    resp = await c.post("/api/auth/refresh")
+    assert resp.status_code == 200
+    csrf = resp.json()["data"]["csrf_token"]
+    assert csrf
+
+    # 缺失时重新生成，必须同步下发 cookie 且与返回值一致
+    assert c.cookies.get("csrf_token") == csrf
+
+    # 后续带 CSRF 的变更请求应能通过校验
+    resp = await c.post(
+        "/api/agents", json={"name": "r1"}, headers={"X-CSRF-Token": csrf}
+    )
+    assert resp.status_code == 200
+
+
+async def test_malformed_sub_returns_unauthorized(session):
+    import jwt as pyjwt
+
+    from app.core.config import get_settings
+    from app.core.exceptions import UnauthorizedError
+    from app.services.auth_service import AuthService
+
+    settings = get_settings()
+    token = pyjwt.encode(
+        {"sub": "no-colon-here", "type": "access", "ver": 0},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    service = AuthService(session)
+    with pytest.raises(UnauthorizedError):
+        await service.load_admin_from_access(token)

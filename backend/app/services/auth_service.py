@@ -16,6 +16,15 @@ from app.models.admin import Admin
 from app.repositories.admin import AdminRepository
 
 
+def _extract_admin_id(payload: dict) -> int:
+    """从 token payload 解析 admin_id；格式非法时抛 ValueError。"""
+    sub = payload.get("sub")
+    if not isinstance(sub, str):
+        raise TypeError("token 缺少 sub")
+    admin_id, _, _ = sub.partition(":")
+    return int(admin_id)
+
+
 class AuthService:
     def __init__(self, session: AsyncSession):
         self._session = session
@@ -38,9 +47,9 @@ class AuthService:
     async def refresh_access(self, refresh_token: str) -> tuple[Admin, str]:
         try:
             payload = decode_token(refresh_token, TOKEN_REFRESH)
+            admin_id = _extract_admin_id(payload)
         except Exception as exc:
             raise UnauthorizedError("refresh token 无效") from exc
-        admin_id = int(str(payload["sub"]).split(":", 1)[0])
         admin = await self._repo.get_by_id(admin_id)
         if admin is None or admin.token_version != payload.get("ver"):
             raise UnauthorizedError("refresh token 已失效")
@@ -54,9 +63,9 @@ class AuthService:
     async def load_admin_from_access(self, access_token: str) -> Admin:
         try:
             payload = decode_token(access_token, TOKEN_ACCESS)
+            admin_id = _extract_admin_id(payload)
         except Exception as exc:
             raise UnauthorizedError("access token 无效") from exc
-        admin_id = int(str(payload["sub"]).split(":", 1)[0])
         admin = await self._repo.get_by_id(admin_id)
         if admin is None or admin.token_version != payload.get("ver"):
             raise UnauthorizedError("access token 已失效")
