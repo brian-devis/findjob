@@ -1,0 +1,66 @@
+"""Agent 管理接口。"""
+from fastapi import APIRouter, Query
+
+from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
+from app.schemas.agent import AgentCreate, AgentOut, AgentSecretOut
+from app.schemas.common import ok
+from app.services.agent_service import AgentService
+
+router = APIRouter()
+
+
+@router.post("")
+async def register(
+    body: AgentCreate, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
+) -> dict:
+    agent, secret = await AgentService(session).register(body.name)
+    await session.commit()
+    return ok(AgentSecretOut(agent_id=agent.agent_id, secret=secret).model_dump())
+
+
+@router.get("")
+async def list_agents(
+    session: DBSession,
+    admin: CurrentAdmin,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    service = AgentService(session)
+    agents = await service.list(offset=offset, limit=limit)
+    total = await service.count()
+    return ok(
+        {"items": [AgentOut.model_validate(a).model_dump() for a in agents], "total": total}
+    )
+
+
+@router.get("/{agent_id}")
+async def get_agent(agent_id: str, session: DBSession, admin: CurrentAdmin) -> dict:
+    agent = await AgentService(session).get(agent_id)
+    return ok(AgentOut.model_validate(agent).model_dump())
+
+
+@router.post("/{agent_id}/rotate-secret")
+async def rotate_secret(
+    agent_id: str, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
+) -> dict:
+    agent, secret = await AgentService(session).rotate_secret(agent_id)
+    await session.commit()
+    return ok(AgentSecretOut(agent_id=agent.agent_id, secret=secret).model_dump())
+
+
+@router.post("/{agent_id}/revoke")
+async def revoke_agent(
+    agent_id: str, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
+) -> dict:
+    agent = await AgentService(session).revoke(agent_id)
+    await session.commit()
+    return ok(AgentOut.model_validate(agent).model_dump())
+
+
+@router.delete("/{agent_id}")
+async def delete_agent(
+    agent_id: str, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
+) -> dict:
+    await AgentService(session).delete(agent_id)
+    await session.commit()
+    return ok()

@@ -11,9 +11,28 @@
 
 ## 2. 认证与授权
 
-- **管理后台**：通过 Caddy 层 Basic Auth（复用现有面板密码机制）或应用内鉴权；未确认前不裸奔。
-- **Windows Local Agent**：Agent 注册与连接必须携带独立凭据（token / 密钥），由 Agent Manager 校验。
-- **AI Provider 凭据**：不写入镜像、不写入代码，只存于 `config/`（权限 600）或环境变量（.env 不入库）。
+### 2.1 管理后台鉴权（已决策：应用内鉴权）
+
+- 独立管理员认证机制，不复用现有 Caddy Basic Auth。
+- 登录成功后签发 **JWT access token（约 15 分钟）+ refresh token（约 7 天）**，均写入 **HttpOnly + Secure + SameSite=Strict** Cookie，前端 JS 无法读取。
+- 密码使用 **argon2id**（不可用 MD5/SHA 等快哈希）存储于 `admins.password_hash`。
+- 状态变更接口需 **CSRF 防护**：`SameSite=Strict` 基础上再要求 `X-CSRF-Token`（double-submit）。
+- **XSS 防护**：设置 CSP 响应头；token 不落 `localStorage`/`sessionStorage`；渲染层转义。
+- 任何接口**不回显明文密钥/密码**，Provider Key 与 Agent secret 只返回掩码。
+
+### 2.2 Windows Local Agent 凭据（已决策）
+
+- 每个 Agent：唯一 `agent_id`（UUID4）+ 独立 `agent_secret`（256 位随机，base64url）。
+- `agent_secret` **注册/轮换时仅返回一次**，服务端只存 `secret_hash`（argon2id），不存明文。
+- WebSocket 握手必须鉴权（`X-Agent-Id` + `Authorization: Bearer`），未鉴权不进业务。
+- 支持**轮换**（`secret_version` 递增 + 宽限期）与**吊销**（`revoked_at`，断开并拒绝重连）。
+- 日志只记 `agent_id` 与凭据掩码，**禁止记录完整 secret**。
+
+### 2.3 AI Provider 凭据
+
+- 不写入镜像、不写入代码、不落日志。
+- 因调用上游需要，`api_key` 以 **AES-GCM 加密存储**（主密钥来自 `config/`，权限 600）；前端仅见掩码。
+- 与 Agent secret 区别：secret 用于「认证」→ 哈希；API Key 用于「调用」→ 加密。
 
 ## 3. 密钥管理
 
