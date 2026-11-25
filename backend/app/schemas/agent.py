@@ -17,6 +17,7 @@ class AgentOut(ORMModel):
     secret_version: int
     last_seen_at: datetime | None = None
     created_at: datetime
+    online: bool = False
 
 
 class AgentSecretOut(BaseModel):

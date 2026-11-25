@@ -1,17 +1,23 @@
 """任务接口。"""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
+from app.core.enums import TaskStatus
 from app.schemas.common import ok
 from app.schemas.task import TaskCreate, TaskOut, TaskStatusOut
 from app.services.task_service import TaskService
+from app.ws import make_message, ws_manager
 
 router = APIRouter()
 
 
 @router.post("")
 async def create_task(
-    body: TaskCreate, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
+    request: Request,
+    body: TaskCreate,
+    session: DBSession,
+    _: CSRFRequired,
+    admin: CurrentAdmin,
 ) -> dict:
     service = TaskService(session)
     task = await service.create(
@@ -25,6 +31,9 @@ async def create_task(
         scheduled_at=body.scheduled_at,
     )
     await session.commit()
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        scheduler.trigger()
     return ok(TaskOut.model_validate(task).model_dump())
 
 
@@ -56,8 +65,14 @@ async def cancel_task(
 ) -> dict:
     service = TaskService(session)
     task = await service.get(task_id)
+    prev_status = task.status_enum
+    target_agent_id = task.agent_id
     task = await service.cancel(task)
     await session.commit()
+    if target_agent_id and prev_status in (TaskStatus.DISPATCHED, TaskStatus.RUNNING):
+        await ws_manager.send_json(
+            target_agent_id, make_message("task_cancel", {"task_id": task.task_id})
+        )
     return ok(
         TaskStatusOut(task_id=task.task_id, status=task.status_enum, attempt=task.attempt).model_dump()
     )

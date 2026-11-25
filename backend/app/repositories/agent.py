@@ -1,5 +1,7 @@
 """Agent 数据访问。"""
-from sqlalchemy import func, select
+from datetime import datetime
+
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
@@ -40,4 +42,10 @@ class AgentRepository:
 
     async def delete(self, agent: Agent) -> None:
         await self._session.delete(agent)
+        await self._session.flush()
+
+    async def touch_last_seen(self, agent_id: str, ts: datetime) -> None:
+        await self._session.execute(
+            update(Agent).where(Agent.agent_id == agent_id).values(last_seen_at=ts)
+        )
         await self._session.flush()
