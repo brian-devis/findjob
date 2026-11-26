@@ -4,31 +4,50 @@ AIJob 是一个「AI 任务助理」系统：一个运行在目标 Linux VPS 上
 
 ## 当前阶段
 
-**P1 —— 后端基础架构开发阶段。** FastAPI 后端骨架已完成（`backend/`），含配置、日志、异常处理、数据库（SQLite WAL）、Alembic 迁移、鉴权（JWT Cookie + argon2id + CSRF）、Agent/Task API、任务状态机、Docker 部署与 pytest 测试。尚未部署，尚未连接 VPS。
+**P2 —— 核心功能开发阶段。** 中心服务（`backend/`）、Windows Local Agent（`agent/`）与 React 管理后台（`frontend/`）核心能力已完成：含 WebSocket 服务端（`/ws/agent`）、任务调度/分发与租约超时恢复循环、本地 SQLite 幂等去重客户端、AI Provider（AES-256-GCM 加密存储）、审计日志（`audit_logs`）、FastAPI 静态 SPA 托管及多阶段 Docker 构建。尚未部署至 VPS。
 
 ## 目录结构
 
 ```
 backend/
-├── app/             # FastAPI 应用（core/models/schemas/services/repositories/api 分层）
-├── alembic/         # 数据库迁移
-├── tests/           # pytest 测试
-├── Dockerfile
+├── app/             # FastAPI 应用（core/models/schemas/services/repositories/api/ws）
+├── alembic/         # 数据库迁移（含初始 schema 与 audit_logs）
+├── tests/           # pytest 测试（37 个用例）
+├── Dockerfile       # 多阶段构建（Node 构建前端 + FastAPI 静态托管）
 ├── docker-compose.yml
 ├── requirements.txt        # 运行时依赖
 └── requirements-dev.txt    # 开发/测试依赖
+agent/
+├── agent/           # Windows Local Agent（WSS 客户端、SQLite 去重存储、PING/SYSTEM_INFO）
+├── tests/           # pytest 测试（含真实后端端到端联调）
+└── requirements.txt
+frontend/
+├── src/             # React + TypeScript 管理后台（登录、Agents、Tasks、AI Providers、审计日志）
+├── package.json
+└── vite.config.ts
 ```
 
 ## 本地开发
 
 ```bash
+# 1. 后端
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/alembic upgrade head          # 建库
+.venv/bin/alembic upgrade head          # 建库/迁移
 .venv/bin/python -m app.cli create-admin --username admin --password xxx
 .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/pytest -q                     # 测试
+.venv/bin/python -m pytest -q           # 测试
 .venv/bin/ruff check app tests          # 代码质量
+
+# 2. 前端
+cd frontend
+npm ci && npm run build                 # 构建产物自动由 FastAPI 托管
+
+# 3. Local Agent
+cd agent
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+.venv/bin/python -m agent.main
 ```
 
 ## 文档索引
