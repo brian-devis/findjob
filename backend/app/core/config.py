@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     # 安全：JWT_SECRET 无默认值，必须在环境变量 / .env 中显式配置强密钥
     jwt_secret: str = ""
+    # AI Provider API Key 加密主密钥（可选；未配置时通过 HKDF 从 jwt_secret 域隔离派生）
+    provider_master_key: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
@@ -27,6 +29,17 @@ class Settings(BaseSettings):
 
     # 日志
     log_level: str = "INFO"
+
+    # 前端静态产物目录（为空时自动探测 ../frontend/dist）
+    static_dir: str | None = None
+
+    # WebSocket 与任务调度
+    ws_heartbeat_interval_seconds: float = 30.0
+    ws_heartbeat_timeout_seconds: float = 10.0
+    ws_heartbeat_max_missed: int = 3
+    scheduler_enabled: bool = True
+    scheduler_poll_interval_seconds: float = 2.0
+    task_dispatch_lease_seconds: int = 30
 
     # 首次启动管理员引导（可选，仅当 admin 不存在时创建）
     admin_username: str | None = None

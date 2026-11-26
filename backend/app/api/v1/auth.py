@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.core.constants import COOKIE_ACCESS, COOKIE_CSRF, COOKIE_REFRESH
 from app.schemas.auth import LoginRequest
 from app.schemas.common import ok
+from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 
 router = APIRouter()
@@ -47,6 +48,12 @@ async def login(body: LoginRequest, response: Response, session: DBSession) -> d
     admin = await service.authenticate(body.username, body.password)
     access, refresh = service.issue_tokens(admin)
     csrf = service.generate_csrf_token()
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="auth.login",
+        target=admin.username,
+    )
+    await session.commit()
     _set_auth_cookies(response, access, refresh, csrf)
     return ok({"username": admin.username, "csrf_token": csrf})
 
@@ -88,6 +95,11 @@ async def me(admin: CurrentAdmin) -> dict:
 @router.post("/logout")
 async def logout(response: Response, session: DBSession, _: CSRFRequired, admin: CurrentAdmin) -> dict:
     await AuthService(session).revoke_all(admin)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="auth.logout",
+        target=admin.username,
+    )
     await session.commit()
     response.delete_cookie(COOKIE_ACCESS)
     response.delete_cookie(COOKIE_REFRESH, path="/api/auth")

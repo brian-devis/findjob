@@ -8,7 +8,10 @@ AIJob：运行在 Linux VPS 上的中心服务（FastAPI + React 管理后台 + 
 
 ## 当前阶段
 
-**P1 后端基础架构开发阶段。** `backend/` 下已有 FastAPI 应用代码，分层为 `app/{core,models,schemas,services,repositories,api}`。
+**P2 核心功能开发阶段。** 仓库包含三部分：
+- `backend/`：FastAPI 应用（`app/{core,models,schemas,services,repositories,api,ws}`），含 WS 服务端、任务调度循环、AI Provider（AES-GCM 加密）、审计日志（`audit_logs`）与静态 SPA 托管；
+- `agent/`：Windows Local Agent（WSS 接入、SQLite WAL 幂等去重、`PING`/`SYSTEM_INFO` 执行器）；
+- `frontend/`：React + TypeScript 管理后台，由多阶段 `backend/Dockerfile` 构建并交由 FastAPI 托管。
 
 ## 文档约定
 

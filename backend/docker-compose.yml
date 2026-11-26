@@ -2,7 +2,9 @@ name: ai-job-assistant
 
 services:
   backend:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     container_name: ai-job-assistant-backend
     restart: unless-stopped
     ports:
@@ -10,6 +12,9 @@ services:
     environment:
       DATABASE_URL: sqlite+aiosqlite:///./data/aijob.db
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 未设置，请在 .env 中配置至少 32 字符的随机强密钥}
+      PROVIDER_MASTER_KEY: ${PROVIDER_MASTER_KEY:-}
+      STATIC_DIR: /app/static
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-strict}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
