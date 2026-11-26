@@ -22,7 +22,10 @@ _HKDF_SALT = b"aijob-static-kdf-salt-v1"
 
 def _derive_aes_key() -> bytes:
     settings = get_settings()
-    raw_secret = (settings.provider_master_key or settings.jwt_secret).encode("utf-8")
+    raw = (settings.provider_master_key or settings.jwt_secret).strip()
+    if len(raw) < 16:
+        raise ValueError("加密主密钥未配置或过短")
+    raw_secret = raw.encode("utf-8")
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,

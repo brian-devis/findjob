@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ApiError } from "../api";
 import type { AuditLogItem } from "../types";
 
 interface Props {
@@ -32,8 +34,20 @@ export function AuditPanel({
   onActionFilterChange,
   onRefresh,
 }: Props) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function safeRefresh() {
+    setError(null);
+    try {
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "刷新审计日志失败");
+    }
+  }
+
   return (
     <div className="stack">
+      {error && <div className="alert alert-error">{error}</div>}
       <section className="card">
         <div className="section-head">
           <h2>审计日志（{logs.length}）</h2>
@@ -48,7 +62,7 @@ export function AuditPanel({
                 </option>
               ))}
             </select>
-            <button className="btn btn-ghost" type="button" onClick={() => void onRefresh()}>
+            <button className="btn btn-ghost" type="button" onClick={() => void safeRefresh()}>
               刷新
             </button>
           </div>

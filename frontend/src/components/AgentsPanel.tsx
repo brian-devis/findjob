@@ -19,6 +19,15 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
   const [oneTimeSecret, setOneTimeSecret] = useState<AgentSecret | null>(null);
   const [copied, setCopied] = useState(false);
 
+  async function safeRefresh() {
+    setError(null);
+    try {
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "刷新 Agent 列表失败");
+    }
+  }
+
   async function handleRegister(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -29,9 +38,15 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
       setOneTimeSecret(secret);
       setCopied(false);
       setName("");
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "注册 Agent 失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("操作已成功，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }
@@ -44,9 +59,15 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
       const secret = await api.rotateAgentSecret(agentId);
       setOneTimeSecret(secret);
       setCopied(false);
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "轮换凭据失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("操作已成功，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }
@@ -146,7 +167,7 @@ AIJOB_AGENT_SECRET=${oneTimeSecret.secret}`}
       <section className="card">
         <div className="section-head">
           <h2>Agent 列表（{agents.length}）</h2>
-          <button className="btn btn-ghost" type="button" onClick={() => void onRefresh()}>
+          <button className="btn btn-ghost" type="button" onClick={() => void safeRefresh()}>
             刷新
           </button>
         </div>

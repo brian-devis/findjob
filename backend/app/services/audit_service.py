@@ -9,6 +9,14 @@ from app.repositories.audit import AuditLogRepository
 _SENSITIVE_KEYWORDS = ("password", "secret", "token", "api_key", "apikey", "authorization")
 
 
+def _sanitize_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _sanitize_detail(value)
+    if isinstance(value, list | tuple):
+        return [_sanitize_value(item) for item in value]
+    return value
+
+
 def _sanitize_detail(detail: dict[str, Any] | None) -> dict[str, Any]:
     if not detail:
         return {}
@@ -17,10 +25,7 @@ def _sanitize_detail(detail: dict[str, Any] | None) -> dict[str, Any]:
         lowered = str(k).lower()
         if any(word in lowered for word in _SENSITIVE_KEYWORDS):
             continue
-        if isinstance(v, dict):
-            clean[k] = _sanitize_detail(v)
-        else:
-            clean[k] = v
+        clean[k] = _sanitize_value(v)
     return clean
 
 

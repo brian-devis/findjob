@@ -60,6 +60,15 @@ export function TasksPanel({
 
   const activeAgents = agents.filter((a) => a.status === "active");
 
+  async function safeRefresh() {
+    setError(null);
+    try {
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "刷新任务列表失败");
+    }
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -206,7 +215,7 @@ export function TasksPanel({
                 </option>
               ))}
             </select>
-            <button className="btn btn-ghost" type="button" onClick={() => void onRefresh()}>
+            <button className="btn btn-ghost" type="button" onClick={() => void safeRefresh()}>
               刷新
             </button>
           </div>

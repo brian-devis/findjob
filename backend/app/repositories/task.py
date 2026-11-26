@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import TaskStatus
@@ -93,3 +93,25 @@ class TaskRepository:
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def claim_for_dispatch(
+        self,
+        *,
+        task_id: str,
+        agent_id: str,
+        dispatched_at: datetime,
+        lease_expires_at: datetime,
+    ) -> bool:
+        """原子条件抢占：仅当任务仍为 queued 时转为 dispatched。"""
+        result = await self._session.execute(
+            update(Task)
+            .where(Task.task_id == task_id, Task.status == TaskStatus.QUEUED.value)
+            .values(
+                status=TaskStatus.DISPATCHED.value,
+                agent_id=agent_id,
+                dispatched_at=dispatched_at,
+                lease_expires_at=lease_expires_at,
+            )
+        )
+        await self._session.flush()
+        return (result.rowcount or 0) == 1

@@ -6,7 +6,7 @@ from app.schemas.agent import AgentCreate, AgentOut, AgentSecretOut
 from app.schemas.common import ok
 from app.services.agent_service import AgentService
 from app.services.audit_service import AuditService
-from app.ws import WS_CLOSE_AGENT_REVOKED, ws_manager
+from app.ws import WS_CLOSE_AGENT_REVOKED, WS_CLOSE_AUTH_FAILED, ws_manager
 
 router = APIRouter()
 
@@ -65,6 +65,9 @@ async def rotate_secret(
         detail={"secret_version": agent.secret_version},
     )
     await session.commit()
+    await ws_manager.disconnect_agent(
+        agent_id, code=WS_CLOSE_AUTH_FAILED, reason="agent secret rotated"
+    )
     return ok(AgentSecretOut(agent_id=agent.agent_id, secret=secret).model_dump())
 
 

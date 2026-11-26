@@ -63,16 +63,17 @@ class TaskScheduler:
 
     async def _loop(self) -> None:
         while not self._stop_event.is_set():
+            self._wake_event.clear()
             try:
                 await self.run_once()
             except Exception:
                 logger.exception("任务调度周期异常")
 
-            self._wake_event.clear()
-            try:
-                await asyncio.wait_for(self._wake_event.wait(), timeout=self._poll_interval)
-            except TimeoutError:
-                pass
+            if not self._wake_event.is_set():
+                try:
+                    await asyncio.wait_for(self._wake_event.wait(), timeout=self._poll_interval)
+                except TimeoutError:
+                    pass
 
     async def run_once(self) -> dict[str, int]:
         """执行一次完整的回收 + 超时检查 + 分发周期。"""
@@ -144,17 +145,23 @@ class TaskScheduler:
             return 0
 
         now = utcnow()
+        lease_expires_at = now + timedelta(seconds=self._lease_seconds)
         to_send: list[tuple[str, dict]] = []
         async with self._session_factory() as session:
             repo = TaskRepository(session)
-            service = TaskService(session)
             candidates = await repo.list_dispatchable(now, online_agent_ids)
             for task in candidates:
                 target_agent_id = task.agent_id or self._pick_agent(online_agent_ids)
                 if target_agent_id not in online_agent_ids:
                     continue
-                task.agent_id = target_agent_id
-                await service.dispatch(task, lease_seconds=self._lease_seconds)
+                claimed = await repo.claim_for_dispatch(
+                    task_id=task.task_id,
+                    agent_id=target_agent_id,
+                    dispatched_at=now,
+                    lease_expires_at=lease_expires_at,
+                )
+                if not claimed:
+                    continue
                 to_send.append(
                     (
                         target_agent_id,

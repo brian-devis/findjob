@@ -13,6 +13,7 @@ import type {
 } from "./types";
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"]);
 
 export class ApiError extends Error {
   status: number;
@@ -89,7 +90,7 @@ async function request<T>(
     path !== "/api/auth/refresh"
   ) {
     const refreshed = await tryRefreshSession();
-    if (refreshed) {
+    if (refreshed && IDEMPOTENT_METHODS.has(method)) {
       return request<T>(path, options, false);
     }
   }

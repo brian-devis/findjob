@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -88,7 +89,11 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=422,
-        content={"code": 1422, "message": "请求参数校验失败", "data": exc.errors()},
+        content={
+            "code": 1422,
+            "message": "请求参数校验失败",
+            "data": jsonable_encoder(exc.errors()),
+        },
     )
 
 

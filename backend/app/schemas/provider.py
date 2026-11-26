@@ -16,6 +16,15 @@ def _validate_http_url(value: str) -> str:
     return v
 
 
+def _validate_non_blank(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("字段不能为空白字符串")
+    return stripped
+
+
 class ProviderCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     base_url: str = Field(min_length=1, max_length=255)
@@ -23,6 +32,13 @@ class ProviderCreate(BaseModel):
     model: str = Field(min_length=1, max_length=64)
     api_key: str | None = Field(default=None, max_length=512)
     enabled: bool = True
+
+    @field_validator("name", "model")
+    @classmethod
+    def _check_non_blank(cls, v: str) -> str:
+        res = _validate_non_blank(v)
+        assert res is not None
+        return res
 
     @field_validator("base_url")
     @classmethod
@@ -37,6 +53,11 @@ class ProviderUpdate(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=64)
     api_key: str | None = Field(default=None, max_length=512)
     enabled: bool | None = None
+
+    @field_validator("name", "model")
+    @classmethod
+    def _check_non_blank(cls, v: str | None) -> str | None:
+        return _validate_non_blank(v)
 
     @field_validator("base_url")
     @classmethod

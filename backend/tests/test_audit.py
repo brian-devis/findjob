@@ -15,13 +15,19 @@ async def test_audit_service_sanitizes_sensitive_keys(session):
             "name": "deepseek",
             "api_key": "sk-must-not-appear",
             "nested": {"secret_token": "leak", "safe": "ok"},
+            "items": [{"token": "leak-in-list", "ok": 1}],
             "password": "pwd",
         },
     )
     await session.commit()
 
-    assert entry.detail == {"name": "deepseek", "nested": {"safe": "ok"}}
+    assert entry.detail == {
+        "name": "deepseek",
+        "nested": {"safe": "ok"},
+        "items": [{"ok": 1}],
+    }
     assert "sk-must-not-appear" not in str(entry.detail)
+    assert "leak-in-list" not in str(entry.detail)
 
 
 @pytest.mark.asyncio

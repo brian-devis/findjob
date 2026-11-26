@@ -177,7 +177,14 @@ class LocalAgentClient:
             return
         msg_type = msg.get("type")
         msg_id = msg.get("id")
-        data = msg.get("data") or {}
+        raw_data = msg.get("data")
+        if raw_data is None:
+            data: dict[str, Any] = {}
+        elif isinstance(raw_data, dict):
+            data = raw_data
+        else:
+            logger.warning("收到非对象类型的 data 字段（type=%s），忽略", msg_type)
+            return
 
         if msg_type == "ping":
             await self._send_json(ws, make_message("pong", {}, msg_id))
@@ -203,8 +210,16 @@ class LocalAgentClient:
     async def _handle_task_dispatch(self, ws: Any, data: dict[str, Any]) -> None:
         task_id = data.get("task_id")
         task_type = data.get("type")
-        payload = data.get("payload") or {}
-        timeout_seconds = int(data.get("timeout_seconds") or 300)
+        raw_payload = data.get("payload")
+        payload = raw_payload if isinstance(raw_payload, dict) else {}
+        raw_timeout = data.get("timeout_seconds")
+        if isinstance(raw_timeout, bool) or raw_timeout is None:
+            timeout_seconds = 300
+        else:
+            try:
+                timeout_seconds = max(1, min(int(raw_timeout), 86400))
+            except (TypeError, ValueError):
+                timeout_seconds = 300
 
         if not isinstance(task_id, str) or not isinstance(task_type, str):
             logger.warning("收到缺少 task_id 或 type 的 task_dispatch，忽略")
@@ -271,9 +286,16 @@ class LocalAgentClient:
                     raise AgentAuthError(f"server closed with code {exc.rcvd.code}") from exc
                 raise
 
-            first_msg = json.loads(first_raw)
+            try:
+                first_msg = json.loads(first_raw)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("invalid handshake JSON") from exc
+            if not isinstance(first_msg, dict):
+                raise TypeError("invalid handshake payload")
             if first_msg.get("type") == "auth_error":
-                reason = (first_msg.get("data") or {}).get("reason", "auth failed")
+                raw_err_data = first_msg.get("data")
+                err_data = raw_err_data if isinstance(raw_err_data, dict) else {}
+                reason = err_data.get("reason", "auth failed")
                 raise AgentAuthError(f"authentication rejected: {reason}")
             if first_msg.get("type") != "auth_ok":
                 raise RuntimeError(f"unexpected handshake message: {first_msg.get('type')}")
@@ -314,7 +336,7 @@ class LocalAgentClient:
             except AgentAuthError as exc:
                 logger.error("鉴权失败，停止重连: %s", exc)
                 raise
-            except (ConnectionClosed, WebSocketException, OSError, RuntimeError) as exc:
+            except (ConnectionClosed, WebSocketException, OSError, RuntimeError, TypeError) as exc:
                 if isinstance(exc, ConnectionClosed) and (
                     exc.rcvd is not None and exc.rcvd.code in _NON_RETRYABLE_CLOSE_CODES
                 ):

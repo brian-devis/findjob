@@ -9,12 +9,21 @@ interface Props {
 
 export function ProvidersPanel({ providers, onRefresh }: Props) {
   const [name, setName] = useState("");
-  const [baseUrl, setBaseUrl] = useState("https://api.asgo.click:8443/v1");
+  const [baseUrl, setBaseUrl] = useState("");
   const [apiFormat, setApiFormat] = useState<ApiFormat>("openai");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function safeRefresh() {
+    setError(null);
+    try {
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "刷新 Provider 列表失败");
+    }
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -32,9 +41,19 @@ export function ProvidersPanel({ providers, onRefresh }: Props) {
       setName("");
       setModel("");
       setApiKey("");
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "创建 AI Provider 失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? `Provider 已保存，但刷新列表失败：${err.message}`
+          : "Provider 已保存，但刷新列表失败，请点击刷新重试",
+      );
     } finally {
       setBusy(false);
     }
@@ -153,7 +172,7 @@ export function ProvidersPanel({ providers, onRefresh }: Props) {
       <section className="card">
         <div className="section-head">
           <h2>AI Provider 列表（{providers.length}）</h2>
-          <button className="btn btn-ghost" type="button" onClick={() => void onRefresh()}>
+          <button className="btn btn-ghost" type="button" onClick={() => void safeRefresh()}>
             刷新
           </button>
         </div>

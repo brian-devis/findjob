@@ -94,9 +94,20 @@ def test_ws_auth_failures_and_revoked(ws_env):
             ws.receive_text()
         assert exc_info.value.code == WS_CLOSE_AUTH_FAILED
 
-    # 3. 已吊销 Agent -> 4002
+    # 3. 已吊销 Agent：错误 secret 返回 4001（不泄露吊销状态），正确 secret 返回 4002
     rev = tc.post(f"/api/agents/{agent_id}/revoke", headers={"X-CSRF-Token": csrf})
     assert rev.status_code == 200
+    with tc.websocket_connect(
+        "/ws/agent",
+        headers={"X-Agent-Id": agent_id, "Authorization": "Bearer wrong-secret"},
+    ) as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "auth_error"
+        assert msg["data"]["reason"] == "invalid credentials"
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            ws.receive_text()
+        assert exc_info.value.code == WS_CLOSE_AUTH_FAILED
+
     with tc.websocket_connect(
         "/ws/agent",
         headers={"X-Agent-Id": agent_id, "Authorization": f"Bearer {secret}"},
@@ -286,3 +297,43 @@ def test_ws_result_without_ack_and_retry(ws_env):
         t_retry = tc.get(f"/api/tasks/{task_id}").json()["data"]
         assert t_retry["status"] == TaskStatus.QUEUED.value
         assert t_retry["attempt"] == 1
+
+
+def test_ws_rotate_secret_disconnects_and_invalidates_old_secret(ws_env):
+    tc = ws_env["client"]
+    csrf = _login(tc)
+    agent_id, old_secret = _register_agent(tc, csrf)
+
+    with tc.websocket_connect(
+        "/ws/agent",
+        headers={"X-Agent-Id": agent_id, "Authorization": f"Bearer {old_secret}"},
+    ) as ws:
+        assert ws.receive_json()["type"] == "auth_ok"
+
+        rot = tc.post(
+            f"/api/agents/{agent_id}/rotate-secret", headers={"X-CSRF-Token": csrf}
+        )
+        assert rot.status_code == 200
+        new_secret = rot.json()["data"]["secret"]
+
+        # 旧连接应立即被以 4001 强制断开
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            ws.receive_text()
+        assert exc_info.value.code == WS_CLOSE_AUTH_FAILED
+
+    # 旧凭据无法重连
+    with tc.websocket_connect(
+        "/ws/agent",
+        headers={"X-Agent-Id": agent_id, "Authorization": f"Bearer {old_secret}"},
+    ) as ws_old:
+        assert ws_old.receive_json()["type"] == "auth_error"
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            ws_old.receive_text()
+        assert exc_info.value.code == WS_CLOSE_AUTH_FAILED
+
+    # 新凭据可正常连接
+    with tc.websocket_connect(
+        "/ws/agent",
+        headers={"X-Agent-Id": agent_id, "Authorization": f"Bearer {new_secret}"},
+    ) as ws_new:
+        assert ws_new.receive_json()["type"] == "auth_ok"

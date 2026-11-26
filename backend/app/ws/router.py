@@ -73,18 +73,18 @@ async def _authenticate(websocket: WebSocket) -> str | None:
             await websocket.close(code=WS_CLOSE_AUTH_FAILED, reason="auth failed")
             return None
 
-        if agent.status == AgentStatus.REVOKED.value:
-            logger.warning("WS 拒绝连接：Agent %s 已被吊销", agent_id)
-            await websocket.send_json(make_message("auth_error", {"reason": "agent revoked"}))
-            await websocket.close(code=WS_CLOSE_AGENT_REVOKED, reason="agent revoked")
-            return None
-
         if not verify_password(secret, agent.secret_hash):
             logger.warning("WS 鉴权失败：Agent %s 凭据不匹配", agent_id)
             await websocket.send_json(
                 make_message("auth_error", {"reason": "invalid credentials"})
             )
             await websocket.close(code=WS_CLOSE_AUTH_FAILED, reason="auth failed")
+            return None
+
+        if agent.status == AgentStatus.REVOKED.value:
+            logger.warning("WS 拒绝连接：Agent %s 已被吊销", agent_id)
+            await websocket.send_json(make_message("auth_error", {"reason": "agent revoked"}))
+            await websocket.close(code=WS_CLOSE_AGENT_REVOKED, reason="agent revoked")
             return None
 
         await repo.touch_last_seen(agent_id, utcnow())
@@ -207,6 +207,14 @@ async def _handle_task_progress(websocket: WebSocket, agent_id: str, msg: WSMess
             )
         )
         return
+    session_factory = _get_session_factory(websocket)
+    async with session_factory() as session:
+        task = await TaskService(session)._repo.get_by_task_id(data.task_id)
+        if task is None or task.agent_id != agent_id:
+            await websocket.send_json(
+                make_message("error", {"code": "TASK_NOT_FOUND", "message": "task not found"}, msg.id)
+            )
+            return
     logger.debug("Agent %s 上报任务 %s 进度", agent_id, data.task_id)
 
 

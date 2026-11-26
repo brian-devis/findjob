@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import uvicorn
 
 from agent.client import AgentAuthError, LocalAgentClient, compute_backoff
 from agent.config import AgentSettings
@@ -161,8 +160,41 @@ def _find_free_port() -> int:
 
 
 @pytest.mark.asyncio
+async def test_client_handles_malformed_data_and_invalid_timeout(tmp_path):
+    client = LocalAgentClient(_make_settings(tmp_path))
+    ws = FakeWS()
+    client._active_ws = ws
+
+    # 非 dict 的 data 字段应安全忽略而不抛出 AttributeError
+    await client.handle_message(ws, json.dumps({"type": "task_dispatch", "data": ["bad"]}))
+    await client.handle_message(ws, json.dumps({"type": "task_cancel", "data": "bad"}))
+
+    # 非法 timeout_seconds 应安全回退默认值并正常执行
+    await client.handle_message(
+        ws,
+        json.dumps(
+            {
+                "type": "task_dispatch",
+                "data": {
+                    "task_id": "t-bad-timeout",
+                    "type": "PING",
+                    "payload": {},
+                    "timeout_seconds": "abc",
+                },
+            }
+        ),
+    )
+    await asyncio.sleep(0.05)
+    assert any(m["type"] == "task_result" and m["data"]["task_id"] == "t-bad-timeout" for m in ws.sent)
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_end_to_end_with_real_backend(tmp_path):
     """端到端联调：启动真实 FastAPI 后端，验证 LocalAgentClient 鉴权、任务执行与结果回传。"""
+    uvicorn = pytest.importorskip("uvicorn")
+    pytest.importorskip("fastapi")
+    pytest.importorskip("sqlalchemy")
     backend_dir = Path(__file__).resolve().parents[2] / "backend"
     if str(backend_dir) not in sys.path:
         sys.path.insert(0, str(backend_dir))

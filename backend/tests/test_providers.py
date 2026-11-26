@@ -44,6 +44,19 @@ async def test_provider_crud_and_secret_masking(auth, session_factory):
     )
     assert r_no_csrf.status_code == 403
 
+    # 全空白 name 应被拒绝（422）
+    r_blank = await c.post(
+        "/api/providers",
+        json={
+            "name": "   ",
+            "base_url": "https://api.asgo.click:8443/v1",
+            "api_format": "openai",
+            "model": "deepseek-v4-pro",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r_blank.status_code == 422
+
     # 创建 Provider：响应仅包含掩码，不含明文
     r_create = await c.post(
         "/api/providers",
