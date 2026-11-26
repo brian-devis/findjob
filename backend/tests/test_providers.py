@@ -15,10 +15,12 @@ def test_aes_gcm_encrypt_decrypt_and_mask():
     assert decrypt_secret(enc1) == raw
     assert decrypt_secret(enc2) == raw
 
-    # 篡改密文必须校验失败
+    # 篡改密文或非法 base64 必须校验失败并抛出 ValueError
     tampered = enc1[:-2] + ("AA" if enc1[-2:] != "AA" else "BB")
     with pytest.raises(ValueError):
         decrypt_secret(tampered)
+    with pytest.raises(ValueError):
+        decrypt_secret("v1:%%%bad%%%")
 
     assert mask_api_key(raw) == "sk-l****3210"
     assert mask_api_key("short") == "****"

@@ -48,9 +48,9 @@ export function App() {
 
   useEffect(() => {
     if (!username) return;
-    void loadData();
+    void loadData().catch(() => undefined);
     const timer = window.setInterval(() => {
-      void loadData();
+      void loadData().catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
   }, [username, loadData]);

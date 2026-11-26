@@ -5,6 +5,7 @@
 - AI Provider API Key 用于调用上游 -> AES-256-GCM 可逆加密存储，绝不回显明文。
 """
 import base64
+import binascii
 import secrets
 
 from cryptography.exceptions import InvalidTag
@@ -48,7 +49,10 @@ def decrypt_secret(ciphertext: str) -> str:
     """解密由 encrypt_secret 生成的密文。"""
     if not ciphertext.startswith(_PREFIX):
         raise ValueError("不支持的密文格式")
-    raw = base64.urlsafe_b64decode(ciphertext[len(_PREFIX) :].encode("ascii"))
+    try:
+        raw = base64.urlsafe_b64decode(ciphertext[len(_PREFIX) :].encode("ascii"))
+    except (binascii.Error, UnicodeEncodeError) as exc:
+        raise ValueError("密文格式非法") from exc
     if len(raw) <= _NONCE_SIZE:
         raise ValueError("密文长度非法")
     nonce, ct = raw[:_NONCE_SIZE], raw[_NONCE_SIZE:]

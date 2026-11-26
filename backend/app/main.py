@@ -72,7 +72,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'",
+        "img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'",
     )
     return response
 
@@ -133,7 +133,8 @@ def mount_frontend(target_app: FastAPI, static_dir: Path) -> None:
 
     @target_app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
-        if full_path.startswith(("api/", "ws/")) or full_path in ("api", "ws", "healthz"):
+        normalized = full_path.rstrip("/")
+        if normalized.startswith(("api/", "ws/")) or normalized in ("api", "ws", "healthz"):
             return JSONResponse(
                 status_code=404,
                 content={"code": 1404, "message": "资源不存在", "data": None},

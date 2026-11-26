@@ -225,12 +225,14 @@ class LocalAgentClient:
             logger.warning("收到缺少 task_id 或 type 的 task_dispatch，忽略")
             return
 
-        # 1. 本地持久化去重：已完成任务不重复执行，直接重发已有结果
+        # 1. 本地持久化去重：仅对已成功任务直接重发，失败任务允许服务端重试重新执行
         existing = self._store.get(task_id)
         if existing is not None:
-            logger.info("任务 %s 已在本地完成，跳过重复执行并重发结果", task_id)
-            await self._report_record(ws, existing)
-            return
+            if existing.status == "succeeded":
+                logger.info("任务 %s 已在本地完成，跳过重复执行并重发结果", task_id)
+                await self._report_record(ws, existing)
+                return
+            logger.info("任务 %s 上次在本地执行失败，允许服务端重试重新执行", task_id)
 
         # 2. 若正在执行中（如上次 ack 丢失触发重发），仅重发 task_ack
         running = self._running_tasks.get(task_id)
@@ -281,6 +283,8 @@ class LocalAgentClient:
                 first_raw = await asyncio.wait_for(
                     ws.recv(), timeout=self._settings.recv_timeout_seconds
                 )
+            except TimeoutError as exc:
+                raise RuntimeError("auth handshake timeout") from exc
             except ConnectionClosed as exc:
                 if exc.rcvd is not None and exc.rcvd.code in _NON_RETRYABLE_CLOSE_CODES:
                     raise AgentAuthError(f"server closed with code {exc.rcvd.code}") from exc
@@ -336,7 +340,14 @@ class LocalAgentClient:
             except AgentAuthError as exc:
                 logger.error("鉴权失败，停止重连: %s", exc)
                 raise
-            except (ConnectionClosed, WebSocketException, OSError, RuntimeError, TypeError) as exc:
+            except (
+                ConnectionClosed,
+                WebSocketException,
+                OSError,
+                RuntimeError,
+                TypeError,
+                TimeoutError,
+            ) as exc:
                 if isinstance(exc, ConnectionClosed) and (
                     exc.rcvd is not None and exc.rcvd.code in _NON_RETRYABLE_CLOSE_CODES
                 ):

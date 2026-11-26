@@ -81,9 +81,15 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
     setBusy(true);
     try {
       await api.revokeAgent(agentId);
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "吊销失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("吊销已成功，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }
@@ -97,9 +103,15 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
     setBusy(true);
     try {
       await api.deleteAgent(agentId);
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "删除失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("删除已成功，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }

@@ -190,6 +190,76 @@ async def test_client_handles_malformed_data_and_invalid_timeout(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_client_retries_failed_task_and_handles_handshake_timeout(tmp_path, monkeypatch):
+    # 1. 本地记录为 failed 时，收到同 task_id 下发允许重新执行并覆盖为 succeeded
+    store = TaskExecutionStore(tmp_path / "retry_failed.db")
+    store.save_result(
+        task_id="t-retry-failed",
+        status="failed",
+        error="previous timeout",
+        reported=True,
+    )
+    client = LocalAgentClient(_make_settings(tmp_path), store=store)
+    ws = FakeWS()
+    client._active_ws = ws
+
+    await client.handle_message(
+        ws,
+        json.dumps(
+            {
+                "type": "task_dispatch",
+                "data": {"task_id": "t-retry-failed", "type": "PING", "payload": {"r": 2}},
+            }
+        ),
+    )
+    await asyncio.sleep(0.05)
+    assert [m["type"] for m in ws.sent] == ["task_ack", "task_result"]
+    assert ws.sent[1]["data"]["status"] == "succeeded"
+    assert store.get("t-retry-failed").status == "succeeded"  # type: ignore[union-attr]
+    await client.close()
+    store.close()
+
+    # 2. 首次握手超时应触发重连逻辑并在 stop() 后安全退出，不崩溃
+    class HangingWS:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def recv(self):
+            await asyncio.sleep(10)
+
+        async def close(self, code: int = 1000, reason: str = "") -> None:
+            return None
+
+    attempts = 0
+
+    def fake_connect(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts >= 2:
+            timeout_client.stop()
+        return HangingWS()
+
+    import websockets
+
+    monkeypatch.setattr(websockets, "connect", fake_connect)
+    timeout_client = LocalAgentClient(
+        _make_settings(
+            tmp_path,
+            recv_timeout_seconds=0.05,
+            reconnect_base_seconds=0.01,
+            reconnect_max_seconds=0.02,
+            state_db_path=str(tmp_path / "timeout_agent.db"),
+        )
+    )
+    await asyncio.wait_for(timeout_client.run_forever(), timeout=2.0)
+    assert attempts >= 2
+    await timeout_client.close()
+
+
+@pytest.mark.asyncio
 async def test_end_to_end_with_real_backend(tmp_path):
     """端到端联调：启动真实 FastAPI 后端，验证 LocalAgentClient 鉴权、任务执行与结果回传。"""
     uvicorn = pytest.importorskip("uvicorn")

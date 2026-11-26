@@ -94,9 +94,15 @@ export function TasksPanel({
         max_attempts: maxAttempts,
         timeout_seconds: timeoutSeconds,
       });
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "创建任务失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("任务已创建，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }
@@ -107,9 +113,15 @@ export function TasksPanel({
     setBusy(true);
     try {
       await api.cancelTask(taskId);
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "取消任务失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("取消请求已成功，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }

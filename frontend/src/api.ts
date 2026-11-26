@@ -26,14 +26,22 @@ export class ApiError extends Error {
   }
 }
 
+function safeDecode(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function readCookie(name: string): string | null {
   const cookies = document.cookie ? document.cookie.split("; ") : [];
   for (const item of cookies) {
     const idx = item.indexOf("=");
     if (idx === -1) continue;
-    const key = decodeURIComponent(item.slice(0, idx));
+    const key = safeDecode(item.slice(0, idx));
     if (key === name) {
-      return decodeURIComponent(item.slice(idx + 1));
+      return safeDecode(item.slice(idx + 1));
     }
   }
   return null;
@@ -93,6 +101,10 @@ async function request<T>(
     if (refreshed && IDEMPOTENT_METHODS.has(method)) {
       return request<T>(path, options, false);
     }
+  }
+
+  if (resp.status === 204 || resp.status === 205) {
+    return undefined as T;
   }
 
   let body: ApiEnvelope<T> | null = null;

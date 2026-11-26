@@ -64,9 +64,15 @@ export function ProvidersPanel({ providers, onRefresh }: Props) {
     setBusy(true);
     try {
       await api.updateProvider(provider.id, { enabled: !provider.enabled });
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "更新状态失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("状态已更新，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }
@@ -80,9 +86,15 @@ export function ProvidersPanel({ providers, onRefresh }: Props) {
     setBusy(true);
     try {
       await api.deleteProvider(provider.id);
-      await onRefresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "删除失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("删除已成功，但刷新列表失败，请点击刷新重试");
     } finally {
       setBusy(false);
     }
