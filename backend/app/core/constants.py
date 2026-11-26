@@ -1,0 +1,5 @@
+"""全局常量。"""
+COOKIE_ACCESS = "access_token"
+COOKIE_REFRESH = "refresh_token"
+COOKIE_CSRF = "csrf_token"
+HEADER_CSRF = "X-CSRF-Token"

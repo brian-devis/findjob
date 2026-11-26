@@ -54,11 +54,11 @@ Windows Local Agent
    |
    | WSS / HTTPS :8443（经 Caddy 反向代理）
    v
-现有 Caddy（唯一公网入口）
+ 现有 Caddy（唯一公网入口）
    |
-   | 反向代理（独立路径 / 子域名，待确认）
+   | 反向代理（子域名 fj.asgo.click，8443）
    v
-AIJob FastAPI（仅监听 127.0.0.1）
+ AIJob FastAPI（仅监听 127.0.0.1）
    ├── Agent Manager   —— 管理 Windows Local Agent 连接与会话
    ├── Task Manager    —— 任务创建 / 调度 / 状态
    ├── AI Provider     —— 统一封装上游 AI 服务调用
@@ -85,7 +85,32 @@ AIJob FastAPI（仅监听 127.0.0.1）
 - 公网仅通过现有 Caddy 的 8443 入口到达，AIJob 使用独立子域名 `fj.asgo.click`。
 - 80 / 443 一律不使用。
 
-## 4. 资源规划（初步）
+## 4. 关键架构决策（P0 已定）
+
+### 4.1 端口规划
+
+- FastAPI 容器**内部**监听 `8000`。
+- 宿主机仅绑定 `127.0.0.1` 上经检查确认未占用的端口（候选 `8100`，P1 现场 `ss -lntp` 复核，避开 7863/7864 等）。
+- 外部统一经现有 Caddy 的 8443（子域名 `fj.asgo.click`）访问，**不开放新公网端口，不改动现有 Caddy**。
+
+### 4.2 管理后台鉴权
+
+- 应用内独立鉴权（JWT access + refresh，HttpOnly+Secure+SameSite=Strict Cookie），不复用 Caddy Basic Auth。
+- 密码 argon2id 哈希；管理接口必须认证；CSRF/XSS 防护；不回显明文密钥。
+- 详见 `security.md`、`api.md`。
+
+### 4.3 Agent 凭据
+
+- 每 Agent 唯一 `agent_id`（UUID4）+ 独立 `agent_secret`（仅返回一次，服务端存哈希）。
+- 支持轮换与吊销；WebSocket 握手鉴权；日志不记完整凭据。
+- 详见 `security.md`、`websocket-protocol.md`。
+
+### 4.4 静态资源托管
+
+- React 构建产物由 FastAPI 直接托管（StaticFiles + SPA 回退），**初期不引入 Nginx 容器**。
+- 公网经 Caddy 8443 反代到 FastAPI。
+
+## 5. 资源规划（初步）
 
 | 服务 | CPU 上限 | 内存上限 |
 | --- | --- | --- |
@@ -95,7 +120,7 @@ AIJob FastAPI（仅监听 127.0.0.1）
 
 > 优先由 FastAPI 直接托管 React 构建产物，减少一个独立容器。实际部署前结合 Docker 当前资源占用再次评估。
 
-## 5. 数据持久化
+## 6. 数据持久化
 
 SQLite 必须持久化，不能随容器重建丢失。建议宿主目录：
 
@@ -107,7 +132,7 @@ SQLite 必须持久化，不能随容器重建丢失。建议宿主目录：
 └── deploy/    # docker-compose.yml 等部署文件
 ```
 
-## 6. 非功能约束
+## 7. 非功能约束
 
 - 安全性：最小暴露、仅经 Caddy 入口、密钥不落于镜像层（见 security.md）。
 - 可维护性：日志轮转、健康检查、优雅停机。

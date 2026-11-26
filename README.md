@@ -4,16 +4,44 @@ AIJob 是一个「AI 任务助理」系统：一个运行在目标 Linux VPS 上
 
 ## 当前阶段
 
-**P0 —— 架构设计阶段。** 当前仅完成架构与部署设计，尚未进行任何服务器部署、目录创建、容器创建或 Caddy 修改。
+**P1 —— 后端基础架构开发阶段。** FastAPI 后端骨架已完成（`backend/`），含配置、日志、异常处理、数据库（SQLite WAL）、Alembic 迁移、鉴权（JWT Cookie + argon2id + CSRF）、Agent/Task API、任务状态机、Docker 部署与 pytest 测试。尚未部署，尚未连接 VPS。
+
+## 目录结构
+
+```
+backend/
+├── app/             # FastAPI 应用（core/models/schemas/services/repositories/api 分层）
+├── alembic/         # 数据库迁移
+├── tests/           # pytest 测试
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt        # 运行时依赖
+└── requirements-dev.txt    # 开发/测试依赖
+```
+
+## 本地开发
+
+```bash
+cd backend
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/alembic upgrade head          # 建库
+.venv/bin/python -m app.cli create-admin --username admin --password xxx
+.venv/bin/uvicorn app.main:app --port 8000
+.venv/bin/pytest -q                     # 测试
+.venv/bin/ruff check app tests          # 代码质量
+```
 
 ## 文档索引
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/architecture.md](docs/architecture.md) | 系统架构、组件、网络拓扑、目标 VPS 环境基准 |
-| [docs/deployment.md](docs/deployment.md) | Docker Compose 部署设计、目录规划、8443 接入方案 |
-| [docs/security.md](docs/security.md) | 安全设计：网络边界、认证、密钥、最小权限 |
-| [docs/development-plan.md](docs/development-plan.md) | P0 / P1 / P2 阶段计划与开发边界 |
+| [docs/architecture.md](docs/architecture.md) | 系统架构、组件、网络拓扑、关键决策、目标 VPS 环境基准 |
+| [docs/deployment.md](docs/deployment.md) | Docker Compose 部署设计、目录规划、端口与 8443 接入方案 |
+| [docs/security.md](docs/security.md) | 安全设计：网络边界、管理后台鉴权、Agent 凭据、密钥、最小权限 |
+| [docs/database.md](docs/database.md) | SQLite 数据模型与任务状态机 |
+| [docs/websocket-protocol.md](docs/websocket-protocol.md) | Agent WSS 协议：鉴权、心跳、幂等、断线恢复 |
+| [docs/api.md](docs/api.md) | REST API 设计 |
+| [docs/development-plan.md](docs/development-plan.md) | P0 / P1 / P2 阶段计划、决策状态与遗留项 |
 
 ## 目标服务器（用户提供的环境基准）
 
@@ -26,6 +54,15 @@ AIJob 是一个「AI 任务助理」系统：一个运行在目标 Linux VPS 上
 - AIJob 接入子域名：`fj.asgo.click`（8443），经现有 Caddy 反向代理
 
 > 注意：以上信息是用户提供的环境基准，**不是**已完成的服务器检查结果。真正部署前必须重新检查（详见 deployment.md 的「部署前检查清单」）。
+
+## 关键架构决策（P0）
+
+1. **端口**：容器内 8000，宿主仅绑 `127.0.0.1:8100`（候选，P1 复核），公网经 Caddy 8443（`fj.asgo.click`）。
+2. **管理后台鉴权**：应用内 JWT（HttpOnly Cookie）+ argon2id 密码 + CSRF/XSS 防护，不回显明文密钥。
+3. **Agent 凭据**：UUID4 + 独立 secret（哈希存储、轮换、吊销、WS 握手鉴权）。
+4. **静态资源**：React 构建由 FastAPI 托管，不引入 Nginx 容器。
+
+详见 [docs/architecture.md](docs/architecture.md)。
 
 ## 硬性约束（P0 起生效）
 

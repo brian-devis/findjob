@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Node / React
+node_modules/
+frontend/dist/
+frontend/build/
+*.tsbuildinfo
+npm-debug.log*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 运行时数据（本地）
+data/*.db
+data/*.db-*
+logs/
+*.log
+
+# 密钥与凭据
+*.pem
+*.key
+config/*.secret

@@ -37,7 +37,7 @@ name: ai-job-assistant            # 独立 Compose 项目名
 services:
   backend:                        # FastAPI + 静态资源
     ports:
-      - "127.0.0.1:<port>:8000"   # 仅本机回环，端口待定（避开 7863/7864 等）
+      - "127.0.0.1:8100:8000"     # 仅本机回环；候选 8100，P1 现场复核未占用（避开 7863/7864 等）
     volumes:
       - /opt/ai-job-assistant/data:/data
       - /opt/ai-job-assistant/logs:/logs
@@ -54,14 +54,15 @@ networks:
 
 > 上述为草案，具体端口、镜像、健康检查等在 P1 依据现场复检结果定稿。
 
-## 5. 公网接入方案（待确认）
+## 5. 公网接入方案
 
 因 80/443 被拦截、现有 8443 已承载 `api.asgo.click` 与 `panel.asgo.click`，AIJob 需复用 8443 入口。**必须先现场检查 Caddyfile、监听端口、反向代理规则与证书**，再提出并确认接入方案。
 
 ### 已确认接入方案
 
 - **AIJob 独立子域名：`fj.asgo.click`（复用 8443 端口）**，与现有 `api.asgo.click` / `panel.asgo.click` 并存。
-- 管理后台鉴权方式（Caddy Basic Auth vs 应用内鉴权）待确认。
+- 管理后台鉴权：**应用内鉴权**（已决策，非 Caddy Basic Auth），见 `security.md`。
+- WebSocket 经同一 8443 入口反代（Caddy `reverse_proxy` 原生支持 WebSocket 升级），不额外开放端口。
 
 > 虽然子域名已确定，但**实际写入 Caddyfile 前仍必须现场检查现有配置、证书与代理规则**，确认无冲突后再经用户确认执行。
 
