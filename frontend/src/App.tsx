@@ -94,6 +94,8 @@ export function App() {
       setTasks([]);
       setProviders([]);
       setResumes([]);
+      setJobsData(EMPTY_JOBS_DATA);
+      setJobPreference(null);
       setAuditLogs([]);
     }
   }

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query, Request
 from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
 from app.core.enums import AgentStatus, TaskType
 from app.core.exceptions import ValidationError
+from app.core.logging import get_logger
 from app.schemas.agent import AgentCreate, AgentOut, AgentSecretOut
 from app.schemas.common import ok
 from app.schemas.task import TaskOut
@@ -12,6 +13,7 @@ from app.services.audit_service import AuditService
 from app.services.task_service import TaskService
 from app.ws import WS_CLOSE_AGENT_REVOKED, WS_CLOSE_AUTH_FAILED, ws_manager
 
+logger = get_logger("app.api.agents")
 router = APIRouter()
 
 
@@ -138,5 +140,8 @@ async def check_boss_login(
     await session.commit()
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
-        scheduler.trigger()
+        try:
+            scheduler.trigger()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("唤醒任务调度器失败，等待下次轮询: %s", exc)
     return ok(TaskOut.model_validate(task).model_dump())

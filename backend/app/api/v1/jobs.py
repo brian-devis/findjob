@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Query, Request
 
 from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
+from app.core.logging import get_logger
 from app.schemas.common import ok
 from app.schemas.job import (
     BossJobApplyRequest,
@@ -18,7 +19,17 @@ from app.schemas.task import TaskOut
 from app.services.audit_service import AuditService
 from app.services.job_service import JobService
 
+logger = get_logger("app.api.jobs")
 router = APIRouter()
+
+
+def _trigger_scheduler(request: Request) -> None:
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        try:
+            scheduler.trigger()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("唤醒任务调度器失败，等待下次轮询: %s", exc)
 
 
 @router.get("/preferences")
@@ -129,9 +140,7 @@ async def scan_jobs(
         detail={"agent_id": task.agent_id, "keywords": task.payload.get("keywords")},
     )
     await session.commit()
-    scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler is not None:
-        scheduler.trigger()
+    _trigger_scheduler(request)
     return ok(TaskOut.model_validate(task).model_dump())
 
 
@@ -209,9 +218,7 @@ async def apply_job(
         detail={"task_id": task.task_id, "dry_run": body.dry_run, "title": job.title},
     )
     await session.commit()
-    scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler is not None:
-        scheduler.trigger()
+    _trigger_scheduler(request)
     return ok(
         {
             "job": BossJobOut.model_validate(job).model_dump(),
@@ -280,7 +287,6 @@ async def auto_apply_jobs(
         },
     )
     await session.commit()
-    scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler is not None and res["dispatched_count"] > 0:
-        scheduler.trigger()
+    if res["dispatched_count"] > 0:
+        _trigger_scheduler(request)
     return ok(res)

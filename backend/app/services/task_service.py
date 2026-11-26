@@ -15,8 +15,15 @@ from app.core.time import utcnow
 from app.models.task import Task
 from app.repositories.task import TaskRepository
 
-# 支持的任务类型集合
-_ALLOWED_TYPES = set(TaskType)
+# 显式维护允许通过 REST/业务服务创建的任务类型白名单
+_ALLOWED_TYPES = {
+    TaskType.PING,
+    TaskType.SYSTEM_INFO,
+    TaskType.BOSS_CHECK_LOGIN,
+    TaskType.BOSS_SYNC_RESUME,
+    TaskType.BOSS_SCAN_JOBS,
+    TaskType.BOSS_APPLY_JOB,
+}
 
 # 状态机：from -> 允许的 to
 _TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {

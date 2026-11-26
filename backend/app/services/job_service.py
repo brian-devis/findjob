@@ -142,7 +142,7 @@ class JobService:
             education = str(raw.get("education") or "").strip()[:64] or None
             recruiter = str(raw.get("recruiter") or "").strip()[:128] or None
             job_url = str(raw.get("job_url") or "").strip()[:512] or None
-            jd_text = str(raw.get("jd_text") or "").strip()
+            jd_text = str(raw.get("jd_text") or "").strip()[:20000]
             tags = [str(t).strip() for t in (raw.get("tags") or []) if str(t).strip()][:20]
 
             blacklist_reason = _match_blacklist(
@@ -477,8 +477,8 @@ class JobService:
 
     async def skip_job(self, job_id: int) -> BossJob:
         job = await self.get_job(job_id)
-        if job.status == BossJobStatus.APPLIED.value:
-            raise ValidationError("已投递岗位不可标记为忽略")
+        if job.status in (BossJobStatus.APPLIED.value, BossJobStatus.APPLYING.value):
+            raise ValidationError("投递中或已投递岗位不可标记为忽略")
         job.status = BossJobStatus.SKIPPED.value
         await self._session.flush()
         return job
@@ -495,6 +495,9 @@ class JobService:
         if job is None:
             return None
         if result_data.get("dry_run") is True:
+            await self._session.flush()
+            return job
+        if job.status != BossJobStatus.APPLYING.value:
             await self._session.flush()
             return job
 

@@ -24,5 +24,6 @@ jobs:
           api_base_url: ${{ vars.LLM_API_BASE_URL }}
           api_format: ${{ vars.LLM_API_FORMAT }}
           model: ${{ vars.LLM_MODEL }}
+          max_requests: 8
           fail_on: error
           status_context: ai-review

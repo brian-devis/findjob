@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 
 from agent.config import AgentSettings
 
@@ -289,7 +290,11 @@ class PersistentBrowserManager:
             if await edit_btn.count() > 0:
                 await edit_btn.click(timeout=timeout)
 
-            textarea = page.locator("textarea:visible").first
+            textarea = container.locator("textarea:visible").first
+            if await textarea.count() == 0:
+                textarea = page.locator(
+                    ".dialog-container textarea:visible, .resume-edit textarea:visible"
+                ).first
             if await textarea.count() == 0:
                 return False
             await textarea.fill(advantage_text, timeout=timeout)
@@ -381,12 +386,23 @@ class PersistentBrowserManager:
                 href = str(item.get("href") or "").strip()
                 attr_id = str(item.get("job_id_attr") or "").strip()
                 matched = re.search(r"job_detail/([^./?]+)", href)
-                boss_job_id = attr_id or (matched.group(1) if matched else f"boss-{len(jobs)+1}")
-                full_url = (
-                    href
-                    if href.startswith("http")
-                    else (f"{self._settings.boss_base_url.rstrip('/')}{href}" if href else None)
-                )
+                if attr_id:
+                    boss_job_id = attr_id
+                elif matched:
+                    boss_job_id = matched.group(1)
+                else:
+                    digest = hashlib.sha256(
+                        f"{company}|{title}|{href}".encode()
+                    ).hexdigest()[:16]
+                    boss_job_id = f"boss-{digest}"
+                if href:
+                    full_url = (
+                        f"https:{href}"
+                        if href.startswith("//")
+                        else urljoin(f"{self._settings.boss_base_url.rstrip('/')}/", href)
+                    )
+                else:
+                    full_url = None
                 jobs.append(
                     {
                         "boss_job_id": boss_job_id,
@@ -484,11 +500,19 @@ class PersistentBrowserManager:
                 input_box = page.locator(
                     "textarea:visible, .chat-input [contenteditable='true']:visible"
                 ).first
-                if await input_box.count() > 0:
-                    await input_box.fill(greeting, timeout=timeout)
-                    send_btn = page.locator("button:has-text('发送'):visible").first
-                    if await send_btn.count() > 0:
-                        await send_btn.click(timeout=timeout)
+                send_btn = page.locator("button:has-text('发送'):visible").first
+                if await input_box.count() == 0 or await send_btn.count() == 0:
+                    return {
+                        "applied": False,
+                        "dry_run": False,
+                        "logged_in": True,
+                        "needs_human_action": True,
+                        "reason": "manual_apply_required",
+                        "message": "已点击「立即沟通」但未定位到输入框或发送按钮，请在本地浏览器核对并手动发送",
+                        "current_url": page.url,
+                    }
+                await input_box.fill(greeting, timeout=timeout)
+                await send_btn.click(timeout=timeout)
                 return {
                     "applied": True,
                     "dry_run": False,

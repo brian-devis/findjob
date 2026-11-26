@@ -113,7 +113,12 @@ async def _call_openai(
         if "text/event-stream" in content_type:
             return await _parse_openai_sse(resp)
         raw = await resp.aread()
-        data = json.loads(raw.decode("utf-8"))
+        try:
+            data = json.loads(raw.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise AppError(f"AI 上游返回非 JSON 响应：{exc}", status_code=502, code=1502) from exc
+        if not isinstance(data, dict):
+            raise AppError("AI 上游返回 JSON 格式错误", status_code=502, code=1502)
         choices = data.get("choices") or []
         if not choices:
             raise AppError("AI 上游返回空 choices", status_code=502, code=1502)
@@ -154,7 +159,13 @@ async def _call_anthropic(
                 status_code=502,
                 code=1502,
             )
-        data = resp.json()
+        raw_text = resp.text
+        try:
+            data = json.loads(raw_text)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise AppError(f"AI 上游返回非 JSON 响应：{exc}", status_code=502, code=1502) from exc
+        if not isinstance(data, dict):
+            raise AppError("AI 上游返回 JSON 格式错误", status_code=502, code=1502)
         blocks = data.get("content") or []
         texts = [
             b.get("text", "")

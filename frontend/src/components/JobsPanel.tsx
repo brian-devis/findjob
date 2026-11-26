@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import type {
   AgentItem,
@@ -87,6 +87,7 @@ export function JobsPanel({
   const [impJd, setImpJd] = useState("");
 
   const [selectedJob, setSelectedJob] = useState<BossJobItem | null>(null);
+  const lastSelectedJobIdRef = useRef<number | null>(null);
   const [applyGreeting, setApplyGreeting] = useState("");
   const [applyDryRun, setApplyDryRun] = useState(true);
   const [autoBatchDryRun, setAutoBatchDryRun] = useState(true);
@@ -115,15 +116,19 @@ export function JobsPanel({
   }, [preference]);
 
   useEffect(() => {
-    if (!selectedJob) return;
-    const latest = jobsData.items.find((j) => j.id === selectedJob.id);
-    if (latest) {
-      setSelectedJob(latest);
-      if (latest.ai_greeting && !applyGreeting) {
-        setApplyGreeting(latest.ai_greeting);
-      }
+    setSelectedJob((prev) => {
+      if (!prev) return prev;
+      return jobsData.items.find((j) => j.id === prev.id) ?? prev;
+    });
+  }, [jobsData.items]);
+
+  useEffect(() => {
+    const currentId = selectedJob?.id ?? null;
+    if (currentId !== null && lastSelectedJobIdRef.current !== currentId) {
+      setApplyGreeting(selectedJob?.ai_greeting ?? "");
     }
-  }, [jobsData.items, selectedJob, applyGreeting]);
+    lastSelectedJobIdRef.current = currentId;
+  }, [selectedJob]);
 
   async function safeRefresh(successMsg?: string) {
     if (successMsg) setNotice(successMsg);
@@ -134,7 +139,10 @@ export function JobsPanel({
     }
   }
 
-  async function persistPreference(nextAutoEnabled: boolean, customNotice?: string) {
+  async function persistPreference(
+    nextAutoEnabled: boolean,
+    customNotice?: string,
+  ): Promise<boolean> {
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -147,7 +155,7 @@ export function JobsPanel({
         exclude_companies: splitCommaList(excludeCompaniesText),
         exclude_keywords: splitCommaList(excludeKeywordsText),
         auto_apply_enabled: nextAutoEnabled,
-        auto_apply_min_score: Number(autoApplyMinScore) || 80,
+        auto_apply_min_score: Number.isFinite(autoApplyMinScore) ? autoApplyMinScore : 80,
         daily_apply_limit: Number(dailyApplyLimit) || 30,
         apply_interval_seconds: Number(applyIntervalSeconds) || 45,
         greeting_template: greetingTemplate.trim() || null,
@@ -157,8 +165,10 @@ export function JobsPanel({
         customNotice ??
           `求职偏好已保存（当前模式：${nextAutoEnabled ? "高分自动投递" : "手动逐条确认"}）`,
       );
+      return true;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存求职偏好失败");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -170,13 +180,17 @@ export function JobsPanel({
   }
 
   async function handleToggleAutoApply(nextValue: boolean) {
+    const prevValue = autoApplyEnabled;
     setAutoApplyEnabled(nextValue);
-    await persistPreference(
+    const saved = await persistPreference(
       nextValue,
       nextValue
         ? `已切换为「高分自动投递模式」（阈值 ≥ ${autoApplyMinScore} 分）`
         : "已切换为「手动逐条确认模式」（默认安全模式）",
     );
+    if (!saved) {
+      setAutoApplyEnabled(prevValue);
+    }
   }
 
   async function handleScanJobs(e: FormEvent) {
@@ -225,6 +239,7 @@ export function JobsPanel({
       setImpJd("");
       if (res.items[0]) {
         setSelectedJob(res.items[0]);
+        setApplyGreeting(res.items[0].ai_greeting ?? "");
       }
       await safeRefresh(
         `已导入岗位：新增 ${res.created}，更新 ${res.updated}，黑名单过滤 ${res.skipped}`,

@@ -7,6 +7,7 @@ from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
 from app.core.enums import AgentStatus, TaskType
 from app.core.exceptions import ValidationError
+from app.core.logging import get_logger
 from app.schemas.common import ok
 from app.schemas.resume import (
     ResumeAIRequest,
@@ -28,6 +29,7 @@ from app.services.resume_parser import MAX_RESUME_UPLOAD_BYTES, parse_resume_upl
 from app.services.resume_service import ResumeService
 from app.services.task_service import TaskService
 
+logger = get_logger("app.api.resumes")
 router = APIRouter()
 
 
@@ -86,7 +88,7 @@ async def create_resume(
 ) -> dict:
     resume = await ResumeService(session).create(
         title=body.title,
-        target_role=body.target_role.strip() if body.target_role else None,
+        target_role=(body.target_role or "").strip() or None,
         source_filename=None,
         source_format=body.source_format.strip() or "markdown",
         raw_content=body.raw_content,
@@ -242,7 +244,7 @@ async def sync_resume_to_boss(
     admin: CurrentAdmin,
 ) -> dict:
     resume = await ResumeService(session).get(resume_id)
-    target_agent_id: str | None = body.agent_id.strip() if body.agent_id else None
+    target_agent_id: str | None = (body.agent_id or "").strip() or None
     if target_agent_id:
         agent = await AgentService(session).get(target_agent_id)
         if agent.status != AgentStatus.ACTIVE.value:
@@ -277,5 +279,8 @@ async def sync_resume_to_boss(
     await session.commit()
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
-        scheduler.trigger()
+        try:
+            scheduler.trigger()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("唤醒任务调度器失败，等待下次轮询: %s", exc)
     return ok(TaskOut.model_validate(task).model_dump())

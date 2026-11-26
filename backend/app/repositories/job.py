@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import BossJobStatus
@@ -15,23 +16,41 @@ class JobPreferenceRepository:
 
     async def get_or_create_default(self) -> JobPreference:
         result = await self._session.execute(
+            select(JobPreference).where(JobPreference.id == 1)
+        )
+        pref = result.scalar_one_or_none()
+        if pref is not None:
+            return pref
+
+        result = await self._session.execute(
             select(JobPreference).order_by(JobPreference.id.asc()).limit(1)
         )
         pref = result.scalar_one_or_none()
-        if pref is None:
-            pref = JobPreference(
-                keywords=[],
-                cities=[],
-                exclude_companies=[],
-                exclude_keywords=[],
-                auto_apply_enabled=False,
-                auto_apply_min_score=80,
-                daily_apply_limit=30,
-                apply_interval_seconds=45,
+        if pref is not None:
+            return pref
+
+        pref = JobPreference(
+            id=1,
+            keywords=[],
+            cities=[],
+            exclude_companies=[],
+            exclude_keywords=[],
+            auto_apply_enabled=False,
+            auto_apply_min_score=80,
+            daily_apply_limit=30,
+            apply_interval_seconds=45,
+        )
+        try:
+            async with self._session.begin_nested():
+                self._session.add(pref)
+                await self._session.flush()
+            return pref
+        except IntegrityError:
+            retry = await self._session.execute(
+                select(JobPreference).order_by(JobPreference.id.asc()).limit(1)
             )
-            self._session.add(pref)
-            await self._session.flush()
-        return pref
+            existing = retry.scalar_one()
+            return existing
 
 
 class BossJobRepository:
@@ -93,7 +112,10 @@ class BossJobRepository:
                         BossJob.status == BossJobStatus.APPLIED.value,
                         BossJob.applied_at >= today_start,
                     ),
-                    BossJob.status == BossJobStatus.APPLYING.value,
+                    and_(
+                        BossJob.status == BossJobStatus.APPLYING.value,
+                        BossJob.updated_at >= today_start,
+                    ),
                 )
             )
         )

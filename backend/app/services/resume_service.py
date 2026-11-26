@@ -151,7 +151,7 @@ class ResumeService:
         resume = await self.get(resume_id)
         provider = await self._pick_provider(provider_id)
         api_key = ProviderService.get_decrypted_api_key(provider)
-        role = (target_role or resume.target_role or "通用岗位").strip()
+        role = (target_role or "").strip() or (resume.target_role or "").strip() or "通用岗位"
 
         user_prompt = (
             f"目标岗位方向：{role}\n"
@@ -198,7 +198,7 @@ class ResumeService:
         resume = await self.get(resume_id)
         provider = await self._pick_provider(provider_id)
         api_key = ProviderService.get_decrypted_api_key(provider)
-        role = (target_role or resume.target_role or "通用岗位").strip()
+        role = (target_role or "").strip() or (resume.target_role or "").strip() or "通用岗位"
 
         review_context = ""
         if resume.ai_review_json:
