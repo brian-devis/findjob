@@ -2,36 +2,66 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { AgentsPanel } from "./components/AgentsPanel";
 import { AuditPanel } from "./components/AuditPanel";
+import { JobsPanel } from "./components/JobsPanel";
 import { LoginView } from "./components/LoginView";
 import { ProvidersPanel } from "./components/ProvidersPanel";
+import { ResumesPanel } from "./components/ResumesPanel";
 import { TasksPanel } from "./components/TasksPanel";
-import type { AgentItem, AuditLogItem, ProviderItem, TaskItem } from "./types";
+import type {
+  AgentItem,
+  AuditLogItem,
+  BossJobListData,
+  JobPreference,
+  ProviderItem,
+  ResumeSummary,
+  TaskItem,
+} from "./types";
 
-type Tab = "agents" | "tasks" | "providers" | "audit";
+type Tab = "resumes" | "jobs" | "agents" | "tasks" | "providers" | "audit";
+
+const EMPTY_JOBS_DATA: BossJobListData = {
+  items: [],
+  total: 0,
+  applied_today: 0,
+  daily_apply_limit: 30,
+  auto_apply_enabled: false,
+  auto_apply_min_score: 80,
+};
 
 export function App() {
   const [checking, setChecking] = useState(true);
   const [username, setUsername] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("agents");
+  const [tab, setTab] = useState<Tab>("resumes");
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [providers, setProviders] = useState<ProviderItem[]>([]);
+  const [resumes, setResumes] = useState<ResumeSummary[]>([]);
+  const [jobPreference, setJobPreference] = useState<JobPreference | null>(null);
+  const [jobsData, setJobsData] = useState<BossJobListData>(EMPTY_JOBS_DATA);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [jobStatusFilter, setJobStatusFilter] = useState("all");
   const [auditActionFilter, setAuditActionFilter] = useState("all");
 
   const loadData = useCallback(async () => {
-    const [agentRes, taskRes, providerRes, auditRes] = await Promise.all([
-      api.listAgents(),
-      api.listTasks(statusFilter),
-      api.listProviders(),
-      api.listAuditLogs(auditActionFilter),
-    ]);
+    const [agentRes, taskRes, providerRes, resumeRes, prefRes, jobsRes, auditRes] =
+      await Promise.all([
+        api.listAgents(),
+        api.listTasks(statusFilter),
+        api.listProviders(),
+        api.listResumes(),
+        api.getJobPreference(),
+        api.listJobs(jobStatusFilter),
+        api.listAuditLogs(auditActionFilter),
+      ]);
     setAgents(agentRes.items);
     setTasks(taskRes.items);
     setProviders(providerRes.items);
+    setResumes(resumeRes.items);
+    setJobPreference(prefRes);
+    setJobsData(jobsRes);
     setAuditLogs(auditRes.items);
-  }, [statusFilter, auditActionFilter]);
+  }, [statusFilter, jobStatusFilter, auditActionFilter]);
 
   useEffect(() => {
     void (async () => {
@@ -63,6 +93,7 @@ export function App() {
       setAgents([]);
       setTasks([]);
       setProviders([]);
+      setResumes([]);
       setAuditLogs([]);
     }
   }
@@ -86,6 +117,20 @@ export function App() {
         <div className="topbar-left">
           <span className="brand-badge">AIJob</span>
           <nav className="tabs">
+            <button
+              className={`tab ${tab === "resumes" ? "tab-active" : ""}`}
+              type="button"
+              onClick={() => setTab("resumes")}
+            >
+              简历工作台 ({resumes.length})
+            </button>
+            <button
+              className={`tab ${tab === "jobs" ? "tab-active" : ""}`}
+              type="button"
+              onClick={() => setTab("jobs")}
+            >
+              岗位与投递 ({jobsData.total})
+            </button>
             <button
               className={`tab ${tab === "agents" ? "tab-active" : ""}`}
               type="button"
@@ -125,7 +170,29 @@ export function App() {
       </header>
 
       <main className="container">
-        {tab === "agents" && <AgentsPanel agents={agents} onRefresh={loadData} />}
+        {tab === "resumes" && (
+          <ResumesPanel
+            resumes={resumes}
+            providers={providers}
+            agents={agents}
+            tasks={tasks}
+            onRefresh={loadData}
+          />
+        )}
+        {tab === "jobs" && (
+          <JobsPanel
+            preference={jobPreference}
+            jobsData={jobsData}
+            agents={agents}
+            providers={providers}
+            statusFilter={jobStatusFilter}
+            onStatusFilterChange={setJobStatusFilter}
+            onRefresh={loadData}
+          />
+        )}
+        {tab === "agents" && (
+          <AgentsPanel agents={agents} tasks={tasks} onRefresh={loadData} />
+        )}
         {tab === "tasks" && (
           <TasksPanel
             agents={agents}

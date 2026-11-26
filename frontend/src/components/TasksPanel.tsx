@@ -56,9 +56,12 @@ export function TasksPanel({
   const [payloadText, setPayloadText] = useState('{"echo": "hello"}');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const activeAgents = agents.filter((a) => a.status === "active");
+  const selectedTask = selectedTaskId
+    ? tasks.find((t) => t.task_id === selectedTaskId) ?? null
+    : null;
 
   async function safeRefresh() {
     setError(null);
@@ -147,6 +150,10 @@ export function TasksPanel({
               >
                 <option value="PING">PING</option>
                 <option value="SYSTEM_INFO">SYSTEM_INFO</option>
+                <option value="BOSS_CHECK_LOGIN">BOSS_CHECK_LOGIN</option>
+                <option value="BOSS_SYNC_RESUME">BOSS_SYNC_RESUME</option>
+                <option value="BOSS_SCAN_JOBS">BOSS_SCAN_JOBS</option>
+                <option value="BOSS_APPLY_JOB">BOSS_APPLY_JOB</option>
               </select>
             </label>
 
@@ -269,7 +276,7 @@ export function TasksPanel({
                         <button
                           className="btn btn-sm btn-secondary"
                           type="button"
-                          onClick={() => setSelectedTask(t)}
+                          onClick={() => setSelectedTaskId(t.task_id)}
                         >
                           详情
                         </button>
@@ -300,7 +307,7 @@ export function TasksPanel({
             <button
               className="btn btn-ghost"
               type="button"
-              onClick={() => setSelectedTask(null)}
+              onClick={() => setSelectedTaskId(null)}
             >
               关闭
             </button>
@@ -313,11 +320,22 @@ export function TasksPanel({
             <div><span className="muted">完成时间：</span>{formatTime(selectedTask.finished_at)}</div>
             <div><span className="muted">错误信息：</span>{selectedTask.error || "无"}</div>
           </div>
+          {Boolean(
+            (selectedTask.result as Record<string, unknown> | null)?.needs_human_action,
+          ) && (
+            <div className="alert alert-warning">
+              <strong>需要本地人工操作：</strong>
+              {String(
+                (selectedTask.result as Record<string, unknown>).message ??
+                  "请在 Local Agent 打开的桌面浏览器中完成扫码登录或安全验证后重试",
+              )}
+            </div>
+          )}
           <p className="muted">Payload</p>
           <pre className="code-block">{JSON.stringify(selectedTask.payload, null, 2)}</pre>
           <p className="muted">Result</p>
           <pre className="code-block">
-            {selectedTask.result ? JSON.stringify(selectedTask.result, null, 2) : "—"}
+            {selectedTask.result !== null ? JSON.stringify(selectedTask.result, null, 2) : "—"}
           </pre>
         </section>
       )}

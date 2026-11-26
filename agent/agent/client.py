@@ -15,6 +15,8 @@ from typing import Any
 import websockets
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
+from agent.boss_executors import register_boss_executors
+from agent.browser import BossBrowserAdapter, PersistentBrowserManager
 from agent.config import AgentSettings
 from agent.executors import TaskExecutorRegistry
 from agent.store import TaskExecutionStore, TaskRecord
@@ -55,11 +57,18 @@ class LocalAgentClient:
         *,
         store: TaskExecutionStore | None = None,
         registry: TaskExecutorRegistry | None = None,
+        browser: BossBrowserAdapter | None = None,
     ) -> None:
         self._settings = settings
         self._store = store or TaskExecutionStore(settings.state_db_path)
         self._owns_store = store is None
-        self._registry = registry or TaskExecutorRegistry()
+        self._browser: BossBrowserAdapter = browser or PersistentBrowserManager(settings)
+        self._owns_browser = browser is None
+        if registry is not None:
+            self._registry = registry
+        else:
+            self._registry = TaskExecutorRegistry()
+            register_boss_executors(self._registry, self._browser)
         self._stop_event = asyncio.Event()
         self._send_lock = asyncio.Lock()
         self._active_ws: Any = None
@@ -86,6 +95,8 @@ class LocalAgentClient:
             except (WebSocketException, OSError, RuntimeError):
                 pass
             self._active_ws = None
+        if self._owns_browser:
+            await self._browser.close()
         if self._owns_store:
             self._store.close()
 
@@ -289,6 +300,9 @@ class LocalAgentClient:
                 if exc.rcvd is not None and exc.rcvd.code in _NON_RETRYABLE_CLOSE_CODES:
                     raise AgentAuthError(f"server closed with code {exc.rcvd.code}") from exc
                 raise
+
+            if isinstance(first_raw, bytes):
+                first_raw = first_raw.decode("utf-8", errors="replace")
 
             try:
                 first_msg = json.loads(first_raw)

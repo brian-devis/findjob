@@ -25,6 +25,14 @@ class AgentSettings(BaseSettings):
     reconnect_max_seconds: float = Field(default=60.0, gt=0)
     log_level: str = "INFO"
 
+    browser_channel: str = "chrome"
+    browser_profile_dir: str = "./data/browser-profile"
+    boss_base_url: str = "https://www.zhipin.com"
+    boss_resume_url: str = "https://www.zhipin.com/web/geek/resume"
+    boss_jobs_url: str = "https://www.zhipin.com/web/geek/job"
+    browser_headless: bool = False
+    browser_action_timeout_ms: int = Field(default=15000, ge=1000, le=120000)
+
     @property
     def masked_secret(self) -> str:
         """返回脱敏后的 secret 掩码，禁止在日志中打印完整凭据。"""
