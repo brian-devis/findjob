@@ -17,11 +17,29 @@ const ACTION_OPTIONS = [
   "agent.rotate_secret",
   "agent.revoke",
   "agent.delete",
+  "agent.check_boss_login",
   "task.create",
   "task.cancel",
   "provider.create",
   "provider.update",
   "provider.delete",
+  "resume.create",
+  "resume.upload",
+  "resume.update",
+  "resume.activate",
+  "resume.delete",
+  "resume.ai_review",
+  "resume.ai_rewrite",
+  "resume.sync_boss",
+  "job.preference_update",
+  "job.import",
+  "job.scan",
+  "job.ai_score",
+  "job.ai_score_batch",
+  "job.apply",
+  "job.skip",
+  "job.restore",
+  "job.auto_apply",
 ];
 
 function formatTime(iso: string): string {
@@ -92,7 +110,7 @@ export function AuditPanel({
                     </td>
                     <td className="mono">{item.target}</td>
                     <td className="mono">
-                      {Object.keys(item.detail).length > 0
+                      {item.detail && Object.keys(item.detail).length > 0
                         ? JSON.stringify(item.detail)
                         : "—"}
                     </td>

@@ -1,9 +1,10 @@
 import { FormEvent, useState } from "react";
 import { api, ApiError } from "../api";
-import type { AgentItem, AgentSecret } from "../types";
+import type { AgentItem, AgentSecret, TaskItem } from "../types";
 
 interface Props {
   agents: AgentItem[];
+  tasks: TaskItem[];
   onRefresh: () => Promise<void>;
 }
 
@@ -12,12 +13,16 @@ function formatTime(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-export function AgentsPanel({ agents, onRefresh }: Props) {
+export function AgentsPanel({ agents, tasks, onRefresh }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [oneTimeSecret, setOneTimeSecret] = useState<AgentSecret | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const latestBossCheck = tasks.find((t) => t.type === "BOSS_CHECK_LOGIN") ?? null;
+  const checkResult = latestBossCheck?.result as Record<string, unknown> | null | undefined;
 
   async function safeRefresh() {
     setError(null);
@@ -117,6 +122,27 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
     }
   }
 
+  async function handleCheckBossLogin(agentId: string, agentName: string) {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const task = await api.checkBossLogin(agentId);
+      setNotice(`已向「${agentName}」下发 BOSS 登录态检测任务（${task.task_id.slice(0, 8)}）`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "下发 BOSS 登录检测失败");
+      setBusy(false);
+      return;
+    }
+    try {
+      await onRefresh();
+    } catch {
+      setError("任务已下发，但刷新列表失败，请点击刷新重试");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copySecret() {
     if (!oneTimeSecret) return;
     try {
@@ -152,6 +178,26 @@ export function AgentsPanel({ agents, onRefresh }: Props) {
       </section>
 
       {error && <div className="alert alert-error">{error}</div>}
+      {notice && <div className="alert alert-success">{notice}</div>}
+
+      {latestBossCheck && (
+        <div
+          className={`alert ${
+            checkResult?.needs_human_action
+              ? "alert-warning"
+              : latestBossCheck.status === "succeeded" && checkResult?.logged_in
+                ? "alert-success"
+                : latestBossCheck.status === "failed"
+                  ? "alert-error"
+                  : "alert-warning"
+          }`}
+        >
+          <strong>最近 BOSS 登录态检测（{latestBossCheck.status}）：</strong>
+          {typeof checkResult?.message === "string"
+            ? checkResult.message
+            : latestBossCheck.error || "等待本地 Agent 执行完成，请留意本地 Chrome/Edge 浏览器窗口"}
+        </div>
+      )}
 
       {oneTimeSecret && (
         <section className="card secret-banner">
@@ -222,6 +268,14 @@ AIJOB_AGENT_SECRET=${oneTimeSecret.secret}`}
                     <td className="actions">
                       {a.status === "active" && (
                         <>
+                          <button
+                            className="btn btn-sm btn-primary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleCheckBossLogin(a.agent_id, a.name)}
+                          >
+                            检查 BOSS 登录态
+                          </button>
                           <button
                             className="btn btn-sm btn-secondary"
                             type="button"

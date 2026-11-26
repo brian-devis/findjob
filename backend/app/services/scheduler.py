@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.enums import TaskStatus
 from app.core.logging import get_logger
 from app.core.time import ensure_utc, utcnow
 from app.repositories.task import TaskRepository
@@ -195,7 +196,7 @@ class TaskScheduler:
                 service = TaskService(session)
                 for task_id in failed_task_ids:
                     task = await repo.get_by_task_id(task_id)
-                    if task is not None and task.status == "dispatched":
+                    if task is not None and task.status == TaskStatus.DISPATCHED.value:
                         await service.requeue_expired(task)
                         logger.warning("任务 %s 下发失败（Agent 已断线），立即重新入队", task_id)
                 await session.commit()

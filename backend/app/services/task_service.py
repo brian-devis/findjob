@@ -15,8 +15,15 @@ from app.core.time import utcnow
 from app.models.task import Task
 from app.repositories.task import TaskRepository
 
-# P1 仅允许这两种测试任务类型
-_ALLOWED_TYPES = {TaskType.PING, TaskType.SYSTEM_INFO}
+# 显式维护允许通过 REST/业务服务创建的任务类型白名单
+_ALLOWED_TYPES = {
+    TaskType.PING,
+    TaskType.SYSTEM_INFO,
+    TaskType.BOSS_CHECK_LOGIN,
+    TaskType.BOSS_SYNC_RESUME,
+    TaskType.BOSS_SCAN_JOBS,
+    TaskType.BOSS_APPLY_JOB,
+}
 
 # 状态机：from -> 允许的 to
 _TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
@@ -55,7 +62,7 @@ class TaskService:
         scheduled_at=None,
     ) -> Task:
         if type_ not in _ALLOWED_TYPES:
-            raise ValidationError(f"任务类型 {type_.value} 暂不支持，仅支持 PING / SYSTEM_INFO")
+            raise ValidationError(f"任务类型 {type_.value} 暂不支持")
 
         if idempotency_key:
             existing = await self._repo.get_by_idempotency_key(idempotency_key)

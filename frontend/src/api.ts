@@ -4,12 +4,20 @@ import type {
   AgentSecret,
   ApiEnvelope,
   AuditLogItem,
+  BossJobItem,
+  BossJobListData,
   CreateProviderInput,
+  CreateResumeInput,
   CreateTaskInput,
+  JobPreference,
+  JobPreferenceUpdateInput,
   PagedResult,
   ProviderItem,
+  ResumeDetail,
+  ResumeSummary,
   TaskItem,
   UpdateProviderInput,
+  UpdateResumeInput,
 } from "./types";
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -74,7 +82,9 @@ async function request<T>(
 ): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
   const headers = new Headers(options.headers || {});
-  if (options.body !== undefined && !headers.has("Content-Type")) {
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (options.body !== undefined && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (MUTATING_METHODS.has(method) && path !== "/api/auth/login") {
@@ -161,6 +171,11 @@ export const api = {
       method: "DELETE",
     });
   },
+  checkBossLogin(agentId: string) {
+    return request<TaskItem>(`/api/agents/${encodeURIComponent(agentId)}/check-boss-login`, {
+      method: "POST",
+    });
+  },
   listTasks(status?: string) {
     const query = status && status !== "all" ? `?status=${encodeURIComponent(status)}&limit=100` : "?limit=100";
     return request<PagedResult<TaskItem>>(`/api/tasks${query}`);
@@ -203,5 +218,173 @@ export const api = {
         ? `?action=${encodeURIComponent(action)}&limit=100`
         : "?limit=100";
     return request<PagedResult<AuditLogItem>>(`/api/audit-logs${query}`);
+  },
+  listResumes() {
+    return request<PagedResult<ResumeSummary>>("/api/resumes?limit=100");
+  },
+  getResume(resumeId: number) {
+    return request<ResumeDetail>(`/api/resumes/${resumeId}`);
+  },
+  createResume(input: CreateResumeInput) {
+    return request<ResumeDetail>("/api/resumes", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  uploadResume(file: File, title?: string, targetRole?: string) {
+    const form = new FormData();
+    form.append("file", file);
+    if (title?.trim()) form.append("title", title.trim());
+    if (targetRole?.trim()) form.append("target_role", targetRole.trim());
+    return request<ResumeDetail>("/api/resumes/upload", {
+      method: "POST",
+      body: form,
+    });
+  },
+  updateResume(resumeId: number, input: UpdateResumeInput) {
+    return request<ResumeDetail>(`/api/resumes/${resumeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+  activateResume(resumeId: number) {
+    return request<ResumeDetail>(`/api/resumes/${resumeId}/activate`, {
+      method: "POST",
+    });
+  },
+  deleteResume(resumeId: number) {
+    return request<null>(`/api/resumes/${resumeId}`, {
+      method: "DELETE",
+    });
+  },
+  aiReviewResume(resumeId: number, providerId?: number, targetRole?: string) {
+    return request<ResumeDetail>(`/api/resumes/${resumeId}/ai-review`, {
+      method: "POST",
+      body: JSON.stringify({
+        provider_id: providerId ?? null,
+        target_role: targetRole?.trim() || null,
+      }),
+    });
+  },
+  aiRewriteResume(
+    resumeId: number,
+    providerId?: number,
+    targetRole?: string,
+    instruction?: string,
+  ) {
+    return request<ResumeDetail>(`/api/resumes/${resumeId}/ai-rewrite`, {
+      method: "POST",
+      body: JSON.stringify({
+        provider_id: providerId ?? null,
+        target_role: targetRole?.trim() || null,
+        instruction: instruction?.trim() || null,
+      }),
+    });
+  },
+  syncResumeToBoss(
+    resumeId: number,
+    input: { agent_id?: string | null; dry_run: boolean },
+  ) {
+    return request<TaskItem>(`/api/resumes/${resumeId}/sync-boss`, {
+      method: "POST",
+      body: JSON.stringify({
+        agent_id: input.agent_id || null,
+        dry_run: input.dry_run,
+      }),
+    });
+  },
+  getJobPreference() {
+    return request<JobPreference>("/api/jobs/preferences");
+  },
+  updateJobPreference(input: JobPreferenceUpdateInput) {
+    return request<JobPreference>("/api/jobs/preferences", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  listJobs(status?: string) {
+    const query =
+      status && status !== "all"
+        ? `?status=${encodeURIComponent(status)}&limit=100`
+        : "?limit=100";
+    return request<BossJobListData>(`/api/jobs${query}`);
+  },
+  importJobs(
+    items: Array<{
+      boss_job_id: string;
+      title: string;
+      company: string;
+      city?: string;
+      salary?: string;
+      job_url?: string;
+      jd_text?: string;
+    }>,
+  ) {
+    return request<{ created: number; updated: number; skipped: number; items: BossJobItem[] }>(
+      "/api/jobs/import",
+      {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      },
+    );
+  },
+  scanBossJobs(input: {
+    agent_id?: string | null;
+    keywords: string[];
+    city?: string | null;
+    max_jobs: number;
+    dry_run: boolean;
+  }) {
+    return request<TaskItem>("/api/jobs/scan", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  aiScoreJob(jobId: number, providerId?: number | null) {
+    return request<BossJobItem>(`/api/jobs/${jobId}/ai-score`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId ?? null }),
+    });
+  },
+  batchScoreJobs(input: { limit?: number; provider_id?: number | null }) {
+    return request<{
+      scored: number;
+      failed: number;
+      items: BossJobItem[];
+      errors: Array<{ job_id: number; title: string; error: string }>;
+    }>("/api/jobs/ai-score-batch", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  applyBossJob(
+    jobId: number,
+    input: { agent_id?: string | null; greeting?: string | null; dry_run: boolean },
+  ) {
+    return request<{ job: BossJobItem; task: TaskItem }>(`/api/jobs/${jobId}/apply`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  skipBossJob(jobId: number) {
+    return request<BossJobItem>(`/api/jobs/${jobId}/skip`, {
+      method: "POST",
+    });
+  },
+  restoreBossJob(jobId: number) {
+    return request<BossJobItem>(`/api/jobs/${jobId}/restore`, {
+      method: "POST",
+    });
+  },
+  autoApplyJobs(input: { agent_id?: string | null; dry_run: boolean; max_count?: number }) {
+    return request<{
+      dispatched_count: number;
+      dry_run: boolean;
+      min_score: number;
+      items: Array<{ job_id: number; title: string; company: string; match_score: number }>;
+    }>("/api/jobs/auto-apply", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   },
 };

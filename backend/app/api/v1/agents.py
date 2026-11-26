@@ -1,13 +1,19 @@
 """Agent 管理接口。"""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
+from app.core.enums import AgentStatus, TaskType
+from app.core.exceptions import ValidationError
+from app.core.logging import get_logger
 from app.schemas.agent import AgentCreate, AgentOut, AgentSecretOut
 from app.schemas.common import ok
+from app.schemas.task import TaskOut
 from app.services.agent_service import AgentService
 from app.services.audit_service import AuditService
+from app.services.task_service import TaskService
 from app.ws import WS_CLOSE_AGENT_REVOKED, WS_CLOSE_AUTH_FAILED, ws_manager
 
+logger = get_logger("app.api.agents")
 router = APIRouter()
 
 
@@ -104,3 +110,38 @@ async def delete_agent(
         agent_id, code=WS_CLOSE_AGENT_REVOKED, reason="agent deleted"
     )
     return ok()
+
+
+@router.post("/{agent_id}/check-boss-login")
+async def check_boss_login(
+    request: Request,
+    agent_id: str,
+    session: DBSession,
+    _: CSRFRequired,
+    admin: CurrentAdmin,
+) -> dict:
+    agent = await AgentService(session).get(agent_id)
+    if agent.status != AgentStatus.ACTIVE.value:
+        raise ValidationError("Agent 已被吊销，无法下发登录态检测任务")
+    task = await TaskService(session).create(
+        type_=TaskType.BOSS_CHECK_LOGIN,
+        agent_id=agent.agent_id,
+        payload={},
+        priority=10,
+        max_attempts=1,
+        timeout_seconds=120,
+    )
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="agent.check_boss_login",
+        target=agent.agent_id,
+        detail={"task_id": task.task_id},
+    )
+    await session.commit()
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        try:
+            scheduler.trigger()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("唤醒任务调度器失败，等待下次轮询: %s", exc)
+    return ok(TaskOut.model_validate(task).model_dump())

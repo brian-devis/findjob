@@ -7,11 +7,13 @@ from pydantic import ValidationError as PydanticValidationError
 
 from app.core.config import get_settings
 from app.core.database import async_session_factory
-from app.core.enums import AgentStatus, TaskStatus
+from app.core.enums import AgentStatus, TaskStatus, TaskType
 from app.core.logging import get_logger
 from app.core.security import verify_password
 from app.core.time import utcnow
 from app.repositories.agent import AgentRepository
+from app.repositories.resume import ResumeRepository
+from app.services.job_service import JobService
 from app.services.task_service import TaskService
 from app.ws.manager import ws_manager
 from app.ws.protocol import (
@@ -183,6 +185,34 @@ async def _handle_task_result(websocket: WebSocket, agent_id: str, msg: WSMessag
             result=data.result,
             error=data.error,
         )
+        if task.type == TaskType.BOSS_SYNC_RESUME.value and succeeded:
+            res_data = data.result if isinstance(data.result, dict) else {}
+            if (
+                res_data.get("synced") is True
+                and res_data.get("dry_run") is False
+                and not res_data.get("needs_human_action", False)
+            ):
+                resume_id = (task.payload or {}).get("resume_id")
+                if isinstance(resume_id, int) and not isinstance(resume_id, bool):
+                    resume = await ResumeRepository(session).get_by_id(resume_id)
+                    if resume is not None:
+                        resume.synced_to_boss_at = utcnow()
+                        await session.flush()
+        elif task.type == TaskType.BOSS_SCAN_JOBS.value and succeeded:
+            res_data = data.result if isinstance(data.result, dict) else {}
+            raw_jobs = res_data.get("jobs")
+            if isinstance(raw_jobs, list) and raw_jobs:
+                await JobService(session).ingest_jobs(raw_jobs)
+        elif task.type == TaskType.BOSS_APPLY_JOB.value:
+            res_data = data.result if isinstance(data.result, dict) else {}
+            job_id = (task.payload or {}).get("job_id")
+            if isinstance(job_id, int) and not isinstance(job_id, bool):
+                await JobService(session).handle_apply_result(
+                    job_id,
+                    succeeded=succeeded,
+                    result_data=res_data,
+                    error_text=data.error,
+                )
         requeued = task.status_enum == TaskStatus.QUEUED
         await session.commit()
         logger.info(
