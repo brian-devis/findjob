@@ -5,6 +5,7 @@ from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
 from app.models.ai_provider import AIProvider
 from app.schemas.common import ok
 from app.schemas.provider import ProviderCreate, ProviderOut, ProviderUpdate
+from app.services.audit_service import AuditService
 from app.services.provider_service import ProviderService
 
 router = APIRouter()
@@ -27,6 +28,12 @@ async def create_provider(
         model=body.model.strip(),
         api_key=body.api_key,
         enabled=body.enabled,
+    )
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="provider.create",
+        target=str(provider.id),
+        detail={"name": provider.name, "model": provider.model, "api_format": provider.api_format},
     )
     await session.commit()
     return ok(_serialize_provider(provider))
@@ -68,6 +75,17 @@ async def update_provider(
         api_key=body.api_key,
         enabled=body.enabled,
     )
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="provider.update",
+        target=str(provider.id),
+        detail={
+            "name": provider.name,
+            "model": provider.model,
+            "enabled": provider.enabled,
+            "key_updated": body.api_key is not None,
+        },
+    )
     await session.commit()
     return ok(_serialize_provider(provider))
 
@@ -77,5 +95,10 @@ async def delete_provider(
     provider_id: int, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
 ) -> dict:
     await ProviderService(session).delete(provider_id)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="provider.delete",
+        target=str(provider_id),
+    )
     await session.commit()
     return ok()

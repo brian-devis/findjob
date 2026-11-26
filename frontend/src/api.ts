@@ -3,6 +3,7 @@ import type {
   AgentItem,
   AgentSecret,
   ApiEnvelope,
+  AuditLogItem,
   CreateProviderInput,
   CreateTaskInput,
   PagedResult,
@@ -182,5 +183,12 @@ export const api = {
     return request<null>(`/api/providers/${providerId}`, {
       method: "DELETE",
     });
+  },
+  listAuditLogs(action?: string) {
+    const query =
+      action && action !== "all"
+        ? `?action=${encodeURIComponent(action)}&limit=100`
+        : "?limit=100";
+    return request<PagedResult<AuditLogItem>>(`/api/audit-logs${query}`);
   },
 };

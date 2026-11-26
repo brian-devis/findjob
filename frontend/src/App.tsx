@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { AgentsPanel } from "./components/AgentsPanel";
+import { AuditPanel } from "./components/AuditPanel";
 import { LoginView } from "./components/LoginView";
 import { ProvidersPanel } from "./components/ProvidersPanel";
 import { TasksPanel } from "./components/TasksPanel";
-import type { AgentItem, ProviderItem, TaskItem } from "./types";
+import type { AgentItem, AuditLogItem, ProviderItem, TaskItem } from "./types";
 
-type Tab = "agents" | "tasks" | "providers";
+type Tab = "agents" | "tasks" | "providers" | "audit";
 
 export function App() {
   const [checking, setChecking] = useState(true);
@@ -15,18 +16,22 @@ export function App() {
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [providers, setProviders] = useState<ProviderItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [auditActionFilter, setAuditActionFilter] = useState("all");
 
   const loadData = useCallback(async () => {
-    const [agentRes, taskRes, providerRes] = await Promise.all([
+    const [agentRes, taskRes, providerRes, auditRes] = await Promise.all([
       api.listAgents(),
       api.listTasks(statusFilter),
       api.listProviders(),
+      api.listAuditLogs(auditActionFilter),
     ]);
     setAgents(agentRes.items);
     setTasks(taskRes.items);
     setProviders(providerRes.items);
-  }, [statusFilter]);
+    setAuditLogs(auditRes.items);
+  }, [statusFilter, auditActionFilter]);
 
   useEffect(() => {
     void (async () => {
@@ -58,6 +63,7 @@ export function App() {
       setAgents([]);
       setTasks([]);
       setProviders([]);
+      setAuditLogs([]);
     }
   }
 
@@ -101,6 +107,13 @@ export function App() {
             >
               AI Providers ({providers.length})
             </button>
+            <button
+              className={`tab ${tab === "audit" ? "tab-active" : ""}`}
+              type="button"
+              onClick={() => setTab("audit")}
+            >
+              审计日志 ({auditLogs.length})
+            </button>
           </nav>
         </div>
         <div className="topbar-right">
@@ -124,6 +137,14 @@ export function App() {
         )}
         {tab === "providers" && (
           <ProvidersPanel providers={providers} onRefresh={loadData} />
+        )}
+        {tab === "audit" && (
+          <AuditPanel
+            logs={auditLogs}
+            actionFilter={auditActionFilter}
+            onActionFilterChange={setAuditActionFilter}
+            onRefresh={loadData}
+          />
         )}
       </main>
     </div>

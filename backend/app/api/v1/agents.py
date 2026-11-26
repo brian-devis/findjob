@@ -5,6 +5,7 @@ from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
 from app.schemas.agent import AgentCreate, AgentOut, AgentSecretOut
 from app.schemas.common import ok
 from app.services.agent_service import AgentService
+from app.services.audit_service import AuditService
 from app.ws import WS_CLOSE_AGENT_REVOKED, ws_manager
 
 router = APIRouter()
@@ -21,6 +22,12 @@ async def register(
     body: AgentCreate, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
 ) -> dict:
     agent, secret = await AgentService(session).register(body.name)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="agent.register",
+        target=agent.agent_id,
+        detail={"name": agent.name},
+    )
     await session.commit()
     return ok(AgentSecretOut(agent_id=agent.agent_id, secret=secret).model_dump())
 
@@ -51,6 +58,12 @@ async def rotate_secret(
     agent_id: str, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
 ) -> dict:
     agent, secret = await AgentService(session).rotate_secret(agent_id)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="agent.rotate_secret",
+        target=agent.agent_id,
+        detail={"secret_version": agent.secret_version},
+    )
     await session.commit()
     return ok(AgentSecretOut(agent_id=agent.agent_id, secret=secret).model_dump())
 
@@ -60,6 +73,12 @@ async def revoke_agent(
     agent_id: str, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
 ) -> dict:
     agent = await AgentService(session).revoke(agent_id)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="agent.revoke",
+        target=agent.agent_id,
+        detail={"name": agent.name},
+    )
     await session.commit()
     await ws_manager.disconnect_agent(
         agent_id, code=WS_CLOSE_AGENT_REVOKED, reason="agent revoked"
@@ -72,6 +91,11 @@ async def delete_agent(
     agent_id: str, session: DBSession, _: CSRFRequired, admin: CurrentAdmin
 ) -> dict:
     await AgentService(session).delete(agent_id)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="agent.delete",
+        target=agent_id,
+    )
     await session.commit()
     await ws_manager.disconnect_agent(
         agent_id, code=WS_CLOSE_AGENT_REVOKED, reason="agent deleted"

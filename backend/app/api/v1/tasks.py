@@ -5,6 +5,7 @@ from app.api.deps import CSRFRequired, CurrentAdmin, DBSession
 from app.core.enums import TaskStatus
 from app.schemas.common import ok
 from app.schemas.task import TaskCreate, TaskOut, TaskStatusOut
+from app.services.audit_service import AuditService
 from app.services.task_service import TaskService
 from app.ws import make_message, ws_manager
 
@@ -29,6 +30,12 @@ async def create_task(
         timeout_seconds=body.timeout_seconds,
         idempotency_key=body.idempotency_key,
         scheduled_at=body.scheduled_at,
+    )
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="task.create",
+        target=task.task_id,
+        detail={"type": task.type, "agent_id": task.agent_id, "priority": task.priority},
     )
     await session.commit()
     scheduler = getattr(request.app.state, "scheduler", None)
@@ -68,6 +75,12 @@ async def cancel_task(
     prev_status = task.status_enum
     target_agent_id = task.agent_id
     task = await service.cancel(task)
+    await AuditService(session).record(
+        actor=f"admin:{admin.username}",
+        action="task.cancel",
+        target=task.task_id,
+        detail={"prev_status": prev_status.value},
+    )
     await session.commit()
     if target_agent_id and prev_status in (TaskStatus.DISPATCHED, TaskStatus.RUNNING):
         await ws_manager.send_json(

@@ -98,3 +98,12 @@ export interface UpdateProviderInput {
   api_key?: string;
   enabled?: boolean;
 }
+
+export interface AuditLogItem {
+  id: number;
+  ts: string;
+  actor: string;
+  action: string;
+  target: string;
+  detail: Record<string, unknown>;
+}
